@@ -68,12 +68,11 @@ module LLVM.AST.Tagged.IRBuilder (
   trunc,
   inttoptr,
   ptrtoint,
+  bitcast,
 
   icmp,
   fcmp,
 
-  bitcast,
-  bitcastPtr,
 
   extractElement,
   insertElement,
@@ -189,127 +188,127 @@ double = coerce AST.double
 float :: Type ::: FloatingPointType' FloatFP
 float = coerce AST.float
 
-ptr :: Known t => (Type ::: t) -> (Type ::: (PointerType' t ('AddrSpace' 0)))
-ptr ty = coerce (AST.ptr (coerce ty))
+ptr :: Type ::: PointerType' ('AddrSpace' 0)
+ptr = coerce AST.ptr
 
 -------------------------------------------------------------------------------
 -- Instructions
 -------------------------------------------------------------------------------
 
 fadd
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (FloatingPointType' t))
   -> (Operand ::: (FloatingPointType' t))
   -> m (Operand ::: (FloatingPointType' t))
 fadd a b = IR.fadd (coerce a) (coerce b) >>= pure . coerce
 
 fmul
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (FloatingPointType' t))
   -> (Operand ::: (FloatingPointType' t))
   -> m (Operand ::: (FloatingPointType' t))
 fmul a b = IR.fmul (coerce a) (coerce b) >>= pure . coerce
 
 fsub
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 fsub a b = IR.fsub (coerce a) (coerce b) >>= pure . coerce
 
 fdiv
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 fdiv a b = IR.fdiv (coerce a) (coerce b) >>= pure . coerce
 
 frem
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 frem a b = IR.frem (coerce a) (coerce b) >>= pure . coerce
 
 add
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 add a b = IR.add (coerce a) (coerce b) >>= pure . coerce
 
 mul
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 mul a b = IR.mul (coerce a) (coerce b) >>= pure . coerce
 
 sub
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 sub a b = IR.sub (coerce a) (coerce b) >>= pure . coerce
 
 udiv
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 udiv a b = IR.udiv (coerce a) (coerce b) >>= pure . coerce
 
 sdiv
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 sdiv a b = IR.sdiv (coerce a) (coerce b) >>= pure . coerce
 
 urem
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 urem a b = IR.urem (coerce a) (coerce b) >>= pure . coerce
 
 shl
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 shl a b = IR.shl (coerce a) (coerce b) >>= pure . coerce
 
 lshr
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 lshr a b = IR.lshr (coerce a) (coerce b) >>= pure . coerce
 
 ashr
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 ashr a b = IR.ashr (coerce a) (coerce b) >>= pure . coerce
 
 and
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 and a b = IR.and (coerce a) (coerce b) >>= pure . coerce
 
 or
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
 or a b = IR.or (coerce a) (coerce b) >>= pure . coerce
 
 xor
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => (Operand ::: (IntegerType' t))
   -> (Operand ::: (IntegerType' t))
   -> m (Operand ::: (IntegerType' t))
@@ -365,17 +364,17 @@ trunc
 trunc a = IR.trunc (coerce a) (val @_ @(IntegerType' width2)) >>= pure . coerce
 
 ptrtoint
-  :: forall width t as m. (Known width)
+  :: forall width as m. (Known width)
   => IR.MonadIRBuilder m
-  => (Operand ::: PointerType' t as)
+  => (Operand ::: PointerType' as)
   -> m (Operand ::: IntegerType' width)
 ptrtoint a = IR.ptrtoint (coerce a) (val @_ @(IntegerType' width)) >>= pure . coerce
 
 inttoptr
-  :: forall width t as m. (Known width)
+  :: forall width as m. (Known width)
   => IR.MonadIRBuilder m
   => (Operand ::: IntegerType' width)
-  -> m (Operand ::: PointerType' t as)
+  -> m (Operand ::: PointerType' as)
 inttoptr a = IR.inttoptr (coerce a) (val @_ @(IntegerType' width)) >>= pure . coerce
 
 fptrunc :: forall fpt1 fpt2 m.
@@ -407,7 +406,7 @@ fcmp
 fcmp pred a b = IR.fcmp pred (coerce a) (coerce b) >>= pure . coerce
 
 select
-  :: forall t m. IR.MonadIRBuilder m
+  :: forall t m. (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => Operand ::: IntegerType' 1
   -> Operand ::: t
   -> Operand ::: t
@@ -420,13 +419,6 @@ bitcast
   => (Operand ::: t1)
   -> m (Operand ::: t2)
 bitcast a = IR.bitcast (coerce a) (val @_ @t2) >>= pure . coerce
-
-bitcastPtr
-  :: forall t1 t2 as m. IR.MonadIRBuilder m
-  => (Known as, Known t2)
-  => (Operand ::: PointerType' t1 as)
-  -> m (Operand ::: PointerType' t2 as)
-bitcastPtr a = IR.bitcast (coerce a) (val @_ @(PointerType' t2 as)) >>= pure . coerce
 
 br :: IR.MonadIRBuilder m => (Name ::: LabelType') -> m ()
 br val = IR.br (coerce val)
@@ -451,22 +443,23 @@ switch
 switch val def dests = IR.switch (coerce val) (coerce def) (coerce dests)
 
 phi
-  :: IR.MonadIRBuilder m
+  :: (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => [(Operand ::: t, Name ::: LabelType')]
   -> m (Operand ::: t)
 phi dests = IR.phi (coerce dests) >>= pure . coerce
 
 gep
-  :: forall t as static_args m. IR.MonadIRBuilder m
-  => (Operand ::: PointerType' t as)
+  :: forall (t :: Type') as static_args m.
+  (IR.MonadIRBuilder m, IR.MonadModuleBuilder m, Known t)
+  => (Operand ::: PointerType' as)
   -> GEP_Args static_args
-  -> m (Operand ::: GEP_Res (PointerType' t as) static_args)
-gep address indices = IR.gep (coerce address) args >>= pure . coerce
+  -> m (Operand ::: PointerType' as)
+gep address indices = IR.gep (val @_ @t) (coerce address) args >>= pure . coerce
   where
     args = fmap ConstantOperand (getGEPArgs indices)
 
 insertElement
-  :: forall n t width m. IR.MonadIRBuilder m
+  :: forall n t width m. (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => Operand ::: VectorType' n t
   -> Operand ::: t
   -> Operand ::: IntegerType' width
@@ -474,29 +467,29 @@ insertElement
 insertElement a b c = IR.insertElement (coerce a) (coerce b) (coerce c) >>= pure . coerce
 
 extractElement
-  :: forall n t width m. IR.MonadIRBuilder m
+  :: forall n t width m. (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => Operand ::: VectorType' n t
   -> Operand ::: IntegerType' width
   -> m (Operand ::: t)
 extractElement v i = IR.extractElement (coerce v) (coerce i) >>= pure . coerce
 
 shuffleVector
-  :: forall n l t width m. IR.MonadIRBuilder m
+  :: forall n l t width m. (IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => Operand ::: VectorType' n t
   -> Operand ::: VectorType' n t
-  -> Constant ::: VectorType' l (IntegerType' 32)
+  -> [Int32]
   -> m (Operand ::: VectorType' l t)
-shuffleVector a b c = IR.shuffleVector (coerce a) (coerce b) (coerce c) >>= pure . coerce
+shuffleVector a b c = IR.shuffleVector (coerce a) (coerce b) c >>= pure . coerce
 
 extractValue
   :: forall t (idxs :: [Nat]) m.
-  (Known idxs, NotNull idxs, IR.MonadIRBuilder m)
+  (Known idxs, NotNull idxs, IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => Operand ::: t
   -> m (Operand ::: ValueAt t idxs)
 extractValue c = IR.extractValue (coerce c) (map fromIntegral (val @_ @idxs) :: [Word32]) >>= pure . coerce
 
 insertValue :: forall t (idxs :: [Nat]) m.
-  (Known idxs, NotNull idxs, IR.MonadIRBuilder  m)
+  (Known idxs, NotNull idxs, IR.MonadIRBuilder m, IR.MonadModuleBuilder m)
   => Operand ::: t
   -> Operand ::: ValueAt t idxs
   -> m (Operand ::: t)

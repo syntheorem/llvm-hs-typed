@@ -55,7 +55,7 @@ parameter nm attrs = coerce Parameter (val @_ @t) nm attrs
 -- It does not support varargs.
 function
   :: forall ret_ty args_tys as. Known ret_ty
-  => (Name ::: PointerType' (FunctionType' ret_ty args_tys) as)
+  => (Name ::: PointerType' as)
   -> (Parameter :::*  args_tys, Bool)
   -> [BasicBlock ::: ret_ty]
   -> Global

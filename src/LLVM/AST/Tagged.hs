@@ -59,9 +59,14 @@ module LLVM.AST.Tagged (
   UnnamedAddr(..),
   Parameter(..),
   BasicBlock(..),
+  Operand(..),
+  CallableOperand,
+  Metadata(..),
+  MetadataNodeID(..),
+  MDRef(..),
+  MDNode(..),
   module LLVM.AST.Tagged.Instruction,
   module LLVM.AST.Tagged.Name,
-  module LLVM.AST.Tagged.Operand,
   module LLVM.AST.Tagged.Type
   ) where
 

@@ -69,17 +69,19 @@ switch ::
 switch o n targets im = doRet $ coerce Switch o n targets im
 
 indirectBr ::
-    Operand ::: PointerType' (IntegerType' 8) as ->
+    Operand ::: PointerType' as ->
     [( Name ::: LabelType')] ->
     InstructionMetadata ->
     Named Terminator ::: t2
 indirectBr o ns im = doRet $ coerce IndirectBr o ns im
 
 invoke ::
+    forall ret_ty args_tys as t2.
+    Known ret_ty =>
     Name ::: ret_ty ->
     CallingConvention ->
     [PA.ParameterAttribute] ->
-    CallableOperand ::: PointerType' (FunctionType' ret_ty args_tys) as ->
+    CallableOperand ::: PointerType' as ->
     (Operand, [PA.ParameterAttribute]) :::* args_tys ->
     [Either FA.GroupID FA.FunctionAttribute] ->
     Name ::: LabelType' ->
@@ -87,7 +89,7 @@ invoke ::
     InstructionMetadata ->
     Named Terminator ::: t2
 invoke n cc pas o os fas n1 n2 im
-    = assertLLVMType $ coerce n := coerce Invoke cc pas o os fas n1 n2 im
+    = assertLLVMType $ coerce n := coerce Invoke cc pas (val @_ @ret_ty) o os fas n1 n2 im
 
 -- | It is not checked that the type of the operand matches the type of
 -- landingpads in this function.

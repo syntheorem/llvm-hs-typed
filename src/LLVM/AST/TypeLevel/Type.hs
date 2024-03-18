@@ -10,6 +10,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE NoStarIsType #-}
 
 {- |
 This modules contains a variant of the 'LLVM.AST.Type.Type' type, suitable for
@@ -32,6 +33,7 @@ import GHC.TypeLits
 import GHC.Exts (Constraint)
 import Data.String.Encode
 import qualified Data.ByteString.Short as BS
+import qualified Data.Kind
 
 import LLVM.AST.Type
 import LLVM.AST.AddrSpace
@@ -48,7 +50,7 @@ data ParameterName' = ParameterName' Symbol
 data Type'
   = VoidType'
   | IntegerType' Nat
-  | PointerType' Type' AddrSpace'
+  | PointerType' AddrSpace'
   | FloatingPointType' FloatingPointType
   | FunctionType' Type' [Type']
     -- ^ we do not support varargs in the typed represenation
@@ -91,7 +93,7 @@ type family BitSizeOf (t :: Type') :: Nat where
 
 -- | This type family indicates the value-level representation of a type-level
 -- type. Often these are the same.
-type family Value k :: *
+type family Value k :: Data.Kind.Type
 
 -- | This class connects type variables (of kind @k@) to their value-level
 -- representation (of type 'Value k').
@@ -125,8 +127,8 @@ instance Known VoidType' where
     val = VoidType
 instance Known n => Known (IntegerType' n) where
     val = IntegerType (word32Val @n)
-instance (Known t, Known as) => Known (PointerType' t as) where
-    val = PointerType (val @_ @t) (val @_ @as)
+instance Known as => Known (PointerType' as) where
+    val = PointerType (val @_ @as)
 instance Known fpt => Known (FloatingPointType' fpt) where
     val = FloatingPointType (val @_ @fpt)
 instance (Known t, Known ts) => Known (FunctionType' t ts) where

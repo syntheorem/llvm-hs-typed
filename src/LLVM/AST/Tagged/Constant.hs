@@ -60,7 +60,6 @@ data GEP_Args (static_args :: [Maybe Nat])  where
 type family GEP_Res (t :: Type') (as :: [Maybe nat]) :: Type' where
     GEP_Res t '[] = t
     GEP_Res (StructureType' _ ts) (Just n : as) = GEP_Res (Nth ts n) as
-    GEP_Res (PointerType' t2 _)   (_ : as) = GEP_Res t2 as
     GEP_Res (ArrayType' _ t2)     (_ : as) = GEP_Res t2 as
 
 
@@ -73,13 +72,13 @@ getGEPArgs (AKnown as) =
     in Int (word32Val @32) i : getGEPArgs as
 getGEPArgs (AUnknown v as) = unTyped v : getGEPArgs as
 
-getElementPtr :: forall t as static_args t2.
+getElementPtr :: forall (t :: Type') as static_args. Known t =>
     Bool ->
-    Constant ::: PointerType' t as ->
+    Constant ::: PointerType' as ->
     GEP_Args static_args ->
-    Constant ::: GEP_Res (PointerType' t as) static_args
+    Constant ::: PointerType' as
 getElementPtr in_bounds address indices
-    = assertLLVMType $ GetElementPtr in_bounds (unTyped address) (getGEPArgs indices)
+    = assertLLVMType $ GetElementPtr in_bounds (val @_ @t) (unTyped address) (getGEPArgs indices)
 
 
 int :: forall width. Known width => Integer -> Constant ::: IntegerType' width
@@ -88,8 +87,8 @@ int value = assertLLVMType $ Int (word32Val @width) value
 float :: forall fpt. SomeFloat :::: fpt -> Constant ::: FloatingPointType' fpt
 float = coerce Float
 
-null :: forall as t. Known t => Constant ::: PointerType' t as
-null = coerce Null (val @_ @t)
+null :: forall as. Known as => Constant ::: PointerType' as
+null = coerce Null (val @_ @(PointerType' as))
 
 struct :: forall b ts. Known b =>
     Maybe Name -> Constant :::* ts -> Constant ::: (StructureType' b ts)
@@ -108,8 +107,8 @@ undef = coerce Undef (val @_ @t)
 
 -- TODO: Does it make sense to include BlockAddress here?
 
-globalReference :: forall t. Known t => Name ::: t -> Constant ::: t
-globalReference name = coerce GlobalReference (val @_ @t) name
+globalReference :: Name ::: t -> Constant ::: t
+globalReference name = coerce GlobalReference name
 
 tokenNone :: Constant ::: TokenType'
 tokenNone = coerce TokenNone
@@ -147,34 +146,10 @@ fmul :: forall fpt.
     Constant ::: (FloatingPointType' fpt)
 fmul = coerce FMul
 
-udiv :: forall width.
-    Bool ->
-    Constant ::: IntegerType' width -> Constant ::: IntegerType' width ->
-    Constant ::: IntegerType' width
-udiv = coerce UDiv
-
-sdiv :: forall width.
-    Bool ->
-    Constant ::: IntegerType' width -> Constant ::: IntegerType' width ->
-    Constant ::: IntegerType' width
-sdiv = coerce SDiv
-
 fdiv :: forall fpt.
     Constant ::: (FloatingPointType' fpt) -> Constant ::: (FloatingPointType' fpt) ->
     Constant ::: (FloatingPointType' fpt)
 fdiv = coerce FDiv
-
-urem :: forall width.
-    Bool ->
-    Constant ::: IntegerType' width -> Constant ::: IntegerType' width ->
-    Constant ::: IntegerType' width
-urem = coerce UDiv
-
-srem :: forall width.
-    Bool ->
-    Constant ::: IntegerType' width -> Constant ::: IntegerType' width ->
-    Constant ::: IntegerType' width
-srem = coerce SDiv
 
 frem :: forall fpt.
     Constant ::: (FloatingPointType' fpt) -> Constant ::: (FloatingPointType' fpt) ->
@@ -258,27 +233,20 @@ fpext :: forall fpt1 fpt2. Known fpt2 =>
     Constant ::: FloatingPointType' fpt2
 fpext o1 = coerce FPExt o1 (val @_ @(FloatingPointType' fpt2))
 
-ptrtoint :: forall as t width. Known width =>
-    Constant ::: PointerType' t as ->
+ptrtoint :: forall as width. Known width =>
+    Constant ::: PointerType' as ->
     Constant ::: IntegerType' width
 ptrtoint o1 = coerce PtrToInt o1 (val @_ @(IntegerType' width))
 
-inttoptr :: forall as t width. (Known t, Known as) =>
+inttoptr :: forall as width. Known as =>
     Constant ::: IntegerType' width ->
-    Constant ::: PointerType' t as
-inttoptr o1 = coerce IntToPtr o1 (val @_ @(PointerType' t as))
+    Constant ::: PointerType' as
+inttoptr o1 = coerce IntToPtr o1 (val @_ @(PointerType' as))
 
--- | We differentiate between bitcasting non-pointers and bitcasting pointers;
--- there is little point in trying to use one function for these two distinct usecases.
 bitcast :: forall t1 t2.
     (Known t2, NonAggregate t1, NonAggregate t2, BitSizeOf t1 ~ BitSizeOf t2) =>
     Constant ::: t1 -> Constant ::: t2
 bitcast o1 = coerce BitCast o1 (val @_ @t2)
-
-bitcastPtr :: forall t1 t2 as.
-    (Known as, Known t2) =>
-    Constant ::: (PointerType' t1 as) -> Constant ::: (PointerType' t2 as)
-bitcastPtr o1 = coerce BitCast o1 (val @_ @(PointerType' t2 as))
 
 icmp :: forall width.
     IntegerPredicate ->
@@ -317,20 +285,3 @@ shuffleVector :: forall n m t.
     Constant ::: VectorType' m (IntegerType' 32) ->
     Constant ::: VectorType' m t
 shuffleVector = coerce ShuffleVector
-
--- | The indices to extractValue need to be known at compile time, to index into
--- structures.
-extractValue :: forall t (idxs :: [Nat]).
-    (Known idxs, NotNull idxs) =>
-    Constant ::: t ->
-    Constant ::: ValueAt t idxs
-extractValue c = coerce ExtractValue c (map fromIntegral (val @_ @idxs) :: [Word32])
-
--- | The indices to insertValue need to be known at compile time, to index into
--- structures.
-insertValue :: forall t (idxs :: [Nat]).
-    (Known idxs, NotNull idxs) =>
-    Constant ::: t ->
-    Constant ::: ValueAt t idxs ->
-    Constant ::: t
-insertValue c v = coerce InsertValue c v (map fromIntegral (val @_ @idxs) :: [Word32])
