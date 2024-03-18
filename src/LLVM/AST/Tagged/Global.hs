@@ -1,18 +1,4 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | This module provides a type-safe variant of "LLVM.AST.Global".
 -- It is currently a stub

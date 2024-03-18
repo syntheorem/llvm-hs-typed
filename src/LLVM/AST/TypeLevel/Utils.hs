@@ -1,7 +1,3 @@
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module LLVM.AST.TypeLevel.Utils where

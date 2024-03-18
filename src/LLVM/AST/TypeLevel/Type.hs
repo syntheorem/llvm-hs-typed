@@ -1,14 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoStarIsType #-}
 

@@ -1,15 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 -- | This module provides a type-safe variant of "LLVM.AST.Operand".
 -- It is currently a stub
 module LLVM.AST.Tagged.Operand (

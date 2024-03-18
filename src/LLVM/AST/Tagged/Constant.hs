@@ -1,16 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 -- | This module provides a type-safe variant of "LLVM.AST.Constant".
@@ -36,7 +23,7 @@ type family NotNull (xs :: [a]) :: Constraint  where
     NotNull '[] = TypeError (Text "The list must not be empty")
     NotNull _ = ()
 
-type family ValueAt (t :: Type') (as :: [nat]) :: Type' where
+type family ValueAt (t :: Type') (as :: [Nat]) :: Type' where
     ValueAt t '[] = t
     ValueAt (StructureType' _ ts) (n : as) = ValueAt (Nth ts n) as
     ValueAt (ArrayType' _ t2)     (_ : as) = ValueAt t2 as
@@ -57,7 +44,7 @@ data GEP_Args (static_args :: [Maybe Nat])  where
         GEP_Args (Nothing : xs)
 
 -- | This type family calculates the return type of a 'getElementPtr' instruction.
-type family GEP_Res (t :: Type') (as :: [Maybe nat]) :: Type' where
+type family GEP_Res (t :: Type') (as :: [Maybe Nat]) :: Type' where
     GEP_Res t '[] = t
     GEP_Res (StructureType' _ ts) (Just n : as) = GEP_Res (Nth ts n) as
     GEP_Res (ArrayType' _ t2)     (_ : as) = GEP_Res t2 as

@@ -1,16 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 -- | This module provides a type-safe variant of "LLVM.AST.Instruction".

@@ -4,16 +4,7 @@ This module provides a type-safe variant of "LLVM.IRBuilder" interface.
 
 -}
 
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module LLVM.AST.Tagged.IRBuilder (
   -- ** Operands
