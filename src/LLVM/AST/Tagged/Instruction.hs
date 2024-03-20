@@ -10,9 +10,10 @@ module LLVM.AST.Tagged.Instruction where
 import Data.Coerce
 
 import LLVM.AST.Tagged.Tag
-import LLVM.AST.Operand
+import LLVM.AST.Tagged.Type
+import LLVM.AST.Operand (Operand, CallableOperand)
 import LLVM.AST.Constant
-import LLVM.AST.TypeLevel.Type
+import LLVM.AST.TypeLevel
 import LLVM.AST.Instruction
 import LLVM.AST.Tagged.Name
 
@@ -30,34 +31,34 @@ import qualified LLVM.AST.FunctionAttribute as FA (FunctionAttribute, GroupID)
 ret :: Operand ::: t -> InstructionMetadata -> Named Terminator ::: t
 ret o im = doRet $ coerce Ret (Just o) im
 
-retVoid :: InstructionMetadata -> Named Terminator ::: VoidType'
+retVoid :: InstructionMetadata -> Named Terminator ::: VoidType
 retVoid im = doRet $ coerce (Ret Nothing) im
 
 condBr ::
-    Operand ::: IntegerType' 1 ->
-    Name ::: LabelType' ->
-    Name ::: LabelType' ->
+    Operand ::: IntegerType 1 ->
+    Name ::: LabelType ->
+    Name ::: LabelType ->
     InstructionMetadata ->
     Named Terminator ::: t
 condBr o1 n1 n2 im = doRet $ coerce CondBr o1 n1 n2 im
 
 br ::
-    Name ::: LabelType' ->
+    Name ::: LabelType ->
     InstructionMetadata ->
     Named Terminator ::: t
 br n im = doRet $ coerce Br n im
 
 switch ::
     Operand ::: t ->
-    Name ::: LabelType' ->
-    [(Constant ::: t, Name ::: LabelType')] ->
+    Name ::: LabelType ->
+    [(Constant ::: t, Name ::: LabelType)] ->
     InstructionMetadata ->
     Named Terminator ::: t2
 switch o n targets im = doRet $ coerce Switch o n targets im
 
 indirectBr ::
-    Operand ::: PointerType' as ->
-    [( Name ::: LabelType')] ->
+    Operand ::: PointerType as ->
+    [( Name ::: LabelType)] ->
     InstructionMetadata ->
     Named Terminator ::: t2
 indirectBr o ns im = doRet $ coerce IndirectBr o ns im
@@ -68,15 +69,15 @@ invoke ::
     Name ::: ret_ty ->
     CallingConvention ->
     [PA.ParameterAttribute] ->
-    CallableOperand ::: PointerType' as ->
+    CallableOperand ::: PointerType as ->
     (Operand, [PA.ParameterAttribute]) :::* args_tys ->
     [Either FA.GroupID FA.FunctionAttribute] ->
-    Name ::: LabelType' ->
-    Name ::: LabelType' ->
+    Name ::: LabelType ->
+    Name ::: LabelType ->
     InstructionMetadata ->
     Named Terminator ::: t2
 invoke n cc pas o os fas n1 n2 im
-    = assertLLVMType $ coerce n := coerce Invoke cc pas (val @_ @ret_ty) o os fas n1 n2 im
+    = assertLLVMType $ coerce n := coerce Invoke cc pas (val @ret_ty) o os fas n1 n2 im
 
 -- | It is not checked that the type of the operand matches the type of
 -- landingpads in this function.
@@ -92,23 +93,23 @@ unreachable ::
 unreachable im = doRet $ coerce Unreachable im
 
 cleanupRet ::
-    Operand ::: TokenType' ->
-    Maybe (Name ::: LabelType') ->
+    Operand ::: TokenType ->
+    Maybe (Name ::: LabelType) ->
     InstructionMetadata ->
     Named Terminator ::: t2
 cleanupRet o mbn im = doRet $ coerce CleanupRet o mbn im
 
 catchRet ::
-    Operand ::: TokenType' ->
-    Name ::: LabelType' ->
+    Operand ::: TokenType ->
+    Name ::: LabelType ->
     InstructionMetadata ->
     Named Terminator ::: t2
 catchRet o n im = doRet $ coerce CatchRet o n im
 
 catchSwitch ::
-    Operand ::: TokenType' ->
-    NonEmpty (Name ::: LabelType') ->
-    Maybe (Name ::: LabelType') ->
+    Operand ::: TokenType ->
+    NonEmpty (Name ::: LabelType) ->
+    Maybe (Name ::: LabelType) ->
     InstructionMetadata ->
     Named Terminator ::: t2
 catchSwitch o ns n im = doRet $ coerce CatchSwitch o ns n im
@@ -121,7 +122,7 @@ catchSwitch o ns n im = doRet $ coerce CatchSwitch o ns n im
 --
 -- The returned 'Named Instruction' does not carry a type, because it is not
 -- useful in any way.
-name :: forall (t :: Type').  NonVoid t =>
+name :: forall (t :: Type).  NonVoid t =>
     Name ::: t ->
     Instruction ::: t ->
     Named Instruction
@@ -130,7 +131,7 @@ name = coerce ((:=) :: Name -> Instruction -> Named Instruction)
 -- | If you do have a void instruction, you must use 'do'' and not pass a name
 -- to it.
 --
-do' :: Instruction ::: VoidType' -> Named Instruction
+do' :: Instruction ::: VoidType -> Named Instruction
 do' = coerce (Do :: Instruction -> Named Instruction)
 
 -- Local helper, for Terminators

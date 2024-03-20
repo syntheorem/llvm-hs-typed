@@ -16,9 +16,10 @@ import qualified LLVM.AST.Attribute as A
 import LLVM.AST.Instruction (Named, Instruction, Terminator)
 
 import LLVM.AST.Tagged.Tag
+import LLVM.AST.Tagged.Type
 import LLVM.AST.Tagged.Name
 import LLVM.AST.Tagged.Instruction
-import LLVM.AST.TypeLevel.Type
+import LLVM.AST.TypeLevel
 
 basicBlock
   :: Name
@@ -32,7 +33,7 @@ parameter
   => (Name ::: t)
   -> [A.ParameterAttribute]
   -> (Parameter ::: t)
-parameter nm attrs = coerce Parameter (val @_ @t) nm attrs
+parameter nm attrs = coerce Parameter (val @t) nm attrs
 
 -- | This creates a 'Global' from typed parameters. It is equal to
 -- 'functionDefaults' with the fields 'AST.name', 'AST.returnType' and
@@ -41,13 +42,13 @@ parameter nm attrs = coerce Parameter (val @_ @t) nm attrs
 -- It does not support varargs.
 function
   :: forall ret_ty args_tys as. Known ret_ty
-  => (Name ::: PointerType' as)
+  => (Name ::: PointerType as)
   -> (Parameter :::*  args_tys, Bool)
   -> [BasicBlock ::: ret_ty]
   -> Global
 function nm (params,variadic) bbs = functionDefaults
   { AST.name = coerce nm
-  , AST.returnType = (val @_ @ret_ty)
+  , AST.returnType = (val @ret_ty)
   , AST.parameters = (coerce params, variadic)
   , AST.basicBlocks = (coerce bbs)
   }

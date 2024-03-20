@@ -25,8 +25,7 @@ tested-with:         GHC == 9.8.2
 
 library
   exposed-modules:
-   LLVM.AST.TypeLevel.Type
-   LLVM.AST.TypeLevel.Utils
+   LLVM.AST.TypeLevel
    LLVM.AST.Tagged
    LLVM.AST.Tagged.Tag
    LLVM.AST.Tagged.Instruction
@@ -57,8 +56,7 @@ library
     llvm-hs-pure    == 15.0.*,
     -- llvm-hs-pretty  >= 0.2,
     bytestring      >= 0.10 && < 0.13,
-    encode-string   == 0.1.*,
-    hvect           == 0.4.*
+    encode-string   == 0.1.*
   hs-source-dirs:      src
   default-language:    GHC2021
   default-extensions:
@@ -66,6 +64,7 @@ library
     DataKinds
     FunctionalDependencies
     GADTs
+    NoStarIsType
     PatternSynonyms
     TypeFamilies
     TypeFamilyDependencies

@@ -7,9 +7,9 @@ module LLVM.AST.Tagged.Operand (
 
 import Data.Coerce
 import LLVM.AST.Tagged.Tag
-import LLVM.AST.TypeLevel.Type
+import LLVM.AST.TypeLevel
 import LLVM.AST.Operand
-import LLVM.AST.Constant
+import LLVM.AST.Constant (Constant)
 
 constantOperand
   :: forall t. Known t
