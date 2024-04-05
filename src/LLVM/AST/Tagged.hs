@@ -52,30 +52,23 @@ Nat@ that returns the bit width of a givne @FloatingPointType@.
 module LLVM.AST.Tagged (
   Module(..), defaultModule,
   Definition(..),
-  Global(GlobalVariable, GlobalAlias, Function),
-  globalVariableDefaults,
-  globalAliasDefaults,
-  functionDefaults,
-  UnnamedAddr(..),
-  Parameter(..),
-  BasicBlock(..),
-  Operand(..),
-  CallableOperand,
+  Operand,
+  constantOperand,
+  metadataOperand,
   Metadata(..),
   MetadataNodeID(..),
   MDRef(..),
   MDNode(..),
+  module LLVM.AST.Tagged.Global,
   module LLVM.AST.Tagged.Instruction,
   module LLVM.AST.Tagged.Name,
   module LLVM.AST.Tagged.Type
   ) where
 
-import LLVM.AST
+import LLVM.AST (Module(..), defaultModule, Definition(..))
 
 import LLVM.AST.Tagged.Name
 import LLVM.AST.Tagged.Type (Type(..), FloatingPointType'(..))
 import LLVM.AST.Tagged.Global
 import LLVM.AST.Tagged.Operand
 import LLVM.AST.Tagged.Instruction
-import LLVM.AST.Tagged.DataLayout
-

@@ -13,6 +13,7 @@ import LLVM.AST.Tagged.Type (Type)
 -- get hold of the actual 'LLVM.Ast.Type.Type' associated to the tag will
 -- typically have a 'Known' type class constraint.
 type v ::: (t :: Type) = v :::: t
+infixl :::
 
 -- | Sometimes we want to annotate a value @v@ with something else than an LLVM
 -- type (@Type@), so this allows any kind
@@ -32,20 +33,15 @@ unTyped (Typed v) = v
 typeOf :: forall (t :: Type) v. Known t => (v ::: t) -> NonTagged.Type
 typeOf (Typed v) = (val @t)
 
--- | A list of tagged values. The smart constructors below ensure
--- that the type-level list has the same lengths as the value list,
--- and that the elements have the corresponding tag.
-type v :::* (ts :: [k']) = [v] :::: ts
-
-tnil :: v :::* '[]
-tnil = assertLLVMType []
-
-pattern (:*) :: v :::: t -> v :::* ts -> v :::* (t:ts)
-pattern x :* xs <- (unTyped -> ((coerce -> x) : (coerce -> xs) :: [v]))
-  where
-    (:*) x xs = assertLLVMType (unTyped x : unTyped xs)
-
+-- | A list of tagged values.
+data v :::* (ts :: [k]) where
+  TNil :: v :::* '[]
+  (:*) :: (v :::: t) -> (v :::* ts) -> v :::* (t:ts)
 infixr 5 :*
+
+unTypedList :: v :::* ts -> [v]
+unTypedList TNil = []
+unTypedList (v :* vs) = unTyped v : unTypedList vs
 
 -- | A vector type
 data (n::Nat) × a where

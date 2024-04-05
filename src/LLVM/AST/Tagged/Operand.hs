@@ -1,18 +1,28 @@
 -- | This module provides a type-safe variant of "LLVM.AST.Operand".
--- It is currently a stub
-module LLVM.AST.Tagged.Operand (
-  module LLVM.AST.Operand,
-  constantOperand,
+module LLVM.AST.Tagged.Operand
+( Operand
+, localReference
+, constantOperand
+, metadataOperand
+, module LLVM.AST.Operand
 ) where
 
-import Data.Coerce
+import LLVM.AST.Tagged.Constant (Constant)
+import LLVM.AST.Tagged.Name (Name)
 import LLVM.AST.Tagged.Tag
+import LLVM.AST.Tagged.Type
 import LLVM.AST.TypeLevel
-import LLVM.AST.Operand
-import LLVM.AST.Constant (Constant)
 
-constantOperand
-  :: forall t. Known t
-  => (Constant ::: t)
-  -> Operand ::: t
-constantOperand c = assertLLVMType (ConstantOperand (coerce c))
+import LLVM.AST.Operand hiding (Operand(..), CallableOperand)
+import LLVM.AST.Operand (Operand)
+import LLVM.AST.Operand qualified as NonTagged
+
+localReference :: forall t. Known t => Name ::: t -> Operand ::: t
+localReference nm = assertLLVMType (NonTagged.LocalReference (val @t) (unTyped nm))
+
+constantOperand :: Constant ::: t -> Operand ::: t
+constantOperand c = assertLLVMType (NonTagged.ConstantOperand (unTyped c))
+
+metadataOperand :: Metadata -> Operand ::: MetadataType
+metadataOperand md = assertLLVMType (NonTagged.MetadataOperand md)
+

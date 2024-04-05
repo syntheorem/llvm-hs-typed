@@ -1,7 +1,62 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 -- | This module provides a type-safe variant of "LLVM.AST.Constant".
-module LLVM.AST.Tagged.Constant where
+module LLVM.AST.Tagged.Constant
+( Constant
+
+-- * Constant values
+, int
+, float
+, struct
+, array
+, LLVM.AST.Tagged.Constant.vector
+, LLVM.AST.Tagged.Constant.null
+, zeroinitialize
+, undef
+, blockaddress
+, global
+
+-- * Constant expressions
+, add
+, fadd
+, sub
+, fsub
+, mul
+, fmul
+, fdiv
+, urem
+, srem
+, frem
+, shl
+, lshr
+, ashr
+, LLVM.AST.Tagged.Constant.and
+, LLVM.AST.Tagged.Constant.or
+, xor
+, getelementptr
+, trunc
+, zext
+, sext
+, fptoui
+, fptosi
+, uitofp
+, sitofp
+, fptrunc
+, fpext
+, ptrtoint
+, inttoptr
+, bitcast
+, addrspacecast
+, icmp
+, fcmp
+, select
+, extractelement
+, insertelement
+, shufflevector
+
+-- * Additional utilities
+, sizeof
+) where
 
 import Data.Word
 import GHC.Exts (Constraint)
@@ -9,7 +64,10 @@ import GHC.Exts (Constraint)
 import LLVM.AST.TypeLevel
 import LLVM.AST.Tagged.Type
 import LLVM.AST.Tagged.Tag
-import LLVM.AST.Constant
+import LLVM.AST.Tagged.GetElementPtr
+import LLVM.AST.Tagged.AddrSpace
+import LLVM.AST.Constant hiding (sizeof)
+import LLVM.AST.Constant qualified as NonTagged
 import LLVM.AST.Name (Name)
 import LLVM.AST.Float (SomeFloat)
 import LLVM.AST.IntegerPredicate (IntegerPredicate)
@@ -17,246 +75,395 @@ import LLVM.AST.FloatingPointPredicate (FloatingPointPredicate)
 
 import Data.Coerce
 
--- A list of arguments to @getElementPtr@ which, on the type level,
--- tracks which arguments are statically known.
-data GEP_Args (static_args :: [Maybe Nat])  where
-    None     :: GEP_Args '[]
-    -- | Statically known index. Only this is allowed to index into a structure
-    AKnown   :: forall n xs. Known n =>
-        GEP_Args xs ->
-        GEP_Args (Just n : xs)
-    -- | Dynamically known index.
-    AUnknown :: forall width xs.
-        Constant ::: IntegerType width ->
-        GEP_Args xs ->
-        GEP_Args (Nothing : xs)
+int
+  :: forall w.
+     (ValidType (IntegerType w), Known w)
+  => Integer
+  -> Constant ::: IntegerType w
+int value = assertLLVMType $ Int (word32Val @w) value
 
--- | This type family calculates the return type of a 'getElementPtr' instruction.
-type family GEP_Res (t :: Type) (as :: [Maybe Nat]) :: Type where
-    GEP_Res t '[] = t
-    GEP_Res (StructureType _ ts) (Just n : as) = GEP_Res (Nth ts n) as
-    GEP_Res (ArrayType _ t2)     (_ : as) = GEP_Res t2 as
-
-
-getGEPArgs :: forall static_args. GEP_Args static_args -> [Constant]
-getGEPArgs None = []
-getGEPArgs (AKnown as) =
-    let i :: forall n xs . (Just n : xs) ~ static_args => Integer
-            -- this extracts the n from the static args
-        i = val @n
-    in Int (word32Val @32) i : getGEPArgs as
-getGEPArgs (AUnknown v as) = unTyped v : getGEPArgs as
-
-getElementPtr :: forall (t :: Type) as static_args. Known t =>
-    Bool ->
-    Constant ::: PointerType as ->
-    GEP_Args static_args ->
-    Constant ::: PointerType as
-getElementPtr in_bounds address indices
-    = assertLLVMType $ GetElementPtr in_bounds (val @t) (unTyped address) (getGEPArgs indices)
-
-
-int :: forall width. Known width => Integer -> Constant ::: IntegerType width
-int value = assertLLVMType $ Int (word32Val @width) value
-
-float :: forall fpt. SomeFloat :::: fpt -> Constant ::: FloatingPointType fpt
+float
+  :: ValidType (FloatingPointType fpt)
+  => SomeFloat :::: fpt
+  -> Constant ::: FloatingPointType fpt
 float = coerce Float
 
-null :: forall as. Known as => Constant ::: PointerType as
-null = coerce Null (val @(PointerType as))
+struct
+  :: forall packed ts.
+     (ValidType (StructureType packed ts),
+      Known packed)
+  => Constant :::* ts
+  -> Constant ::: (StructureType packed ts)
+struct xs = assertLLVMType $ Struct Nothing (val @packed) (unTypedList xs)
 
-struct :: forall b ts. Known b =>
-    Maybe Name -> Constant :::* ts -> Constant ::: (StructureType b ts)
-struct mbName xs = coerce Struct mbName (val @b) xs
-
-array :: forall n t. Known t =>
-    n × (Constant ::: t) -> Constant ::: (ArrayType n t)
+array
+  :: forall n t.
+     (ValidType (ArrayType n t), Known t)
+  => n × (Constant ::: t)
+  -> Constant ::: (ArrayType n t)
 array vals = coerce Array (val @t) (unCounted vals)
 
-vector :: forall n t. Known t =>
-    n × (Constant ::: t) -> Constant ::: (VectorType n t)
+vector
+  :: ValidType (VectorType n t)
+  => n × (Constant ::: t)
+  -> Constant ::: (VectorType n t)
 vector vals = coerce Vector (unCounted vals)
 
-undef :: forall t. Known t => Constant ::: t
+null
+  :: forall as.
+     (ValidType (PointerType as), Known as)
+  => Constant ::: PointerType as
+null = coerce Null (val @(PointerType as))
+
+zeroinitialize
+  :: forall t.
+     (ZeroInitializable t, Known t)
+  => Constant ::: t
+zeroinitialize = assertLLVMType $ AggregateZero (val @t)
+
+-- TODO: SizedType might be too restrictive, should it be FirstClassType?
+undef
+  :: forall t.
+     (SizedType t, Known t)
+  => Constant ::: t
 undef = coerce Undef (val @t)
 
--- TODO: Does it make sense to include BlockAddress here?
+blockaddress
+  :: ValidType (PointerType as)
+  => Name ::: PointerType as -- ^ function name
+  -> Name ::: LabelType      -- ^ block label
+  -> Constant ::: PointerType as
+blockaddress = coerce BlockAddress
 
-globalReference :: Name ::: t -> Constant ::: t
-globalReference name = coerce GlobalReference name
+-- | Reference to the named global variable.
+global :: ValidType t => Name ::: t -> Constant ::: t
+global = coerce GlobalReference
 
 tokenNone :: Constant ::: TokenType
 tokenNone = coerce TokenNone
 
-add :: forall width.
-    Bool -> Bool ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+add
+  :: IntOrIntVector n w t
+  => Bool -- ^ nsw
+  -> Bool -- ^ nuw
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 add = coerce Add
 
-fadd :: forall fpt.
-    Constant ::: (FloatingPointType fpt) -> Constant ::: (FloatingPointType fpt) ->
-    Constant ::: (FloatingPointType fpt)
+fadd
+  :: FloatOrFloatVector n fpt t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 fadd = coerce FAdd
 
-sub :: forall width.
-    Bool -> Bool ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+sub
+  :: IntOrIntVector n w t
+  => Bool -- ^ nsw
+  -> Bool -- ^ nuw
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 sub = coerce Sub
 
-fsub :: forall fpt.
-    Constant ::: (FloatingPointType fpt) -> Constant ::: (FloatingPointType fpt) ->
-    Constant ::: (FloatingPointType fpt)
+fsub
+  :: FloatOrFloatVector n fpt t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 fsub = coerce FSub
 
-mul :: forall width.
-    Bool -> Bool ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+mul
+  :: IntOrIntVector n w t
+  => Bool -- ^ nsw
+  -> Bool -- ^ nuw
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 mul = coerce Mul
 
-fmul :: forall fpt.
-    Constant ::: (FloatingPointType fpt) -> Constant ::: (FloatingPointType fpt) ->
-    Constant ::: (FloatingPointType fpt)
+fmul
+  :: FloatOrFloatVector n fpt t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 fmul = coerce FMul
 
-fdiv :: forall fpt.
-    Constant ::: (FloatingPointType fpt) -> Constant ::: (FloatingPointType fpt) ->
-    Constant ::: (FloatingPointType fpt)
+fdiv
+  :: FloatOrFloatVector n fpt t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 fdiv = coerce FDiv
 
-frem :: forall fpt.
-    Constant ::: (FloatingPointType fpt) -> Constant ::: (FloatingPointType fpt) ->
-    Constant ::: (FloatingPointType fpt)
-frem = coerce FDiv
+urem
+  :: IntOrIntVector n fpt t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
+urem = coerce URem
 
-shl :: forall width.
-    Bool -> Bool ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+srem
+  :: IntOrIntVector n fpt t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
+srem = coerce SRem
+
+frem
+  :: FloatOrFloatVector n fpt t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
+frem = coerce FRem
+
+shl
+  :: IntOrIntVector n w t
+  => Bool -- ^ nsw
+  -> Bool -- ^ nuw
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 shl = coerce Shl
 
-lshr :: forall width.
-    Bool ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+lshr
+  :: IntOrIntVector n w t
+  => Bool -- ^ exact
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 lshr = coerce LShr
 
-ashr :: forall width.
-    Bool ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+ashr
+  :: IntOrIntVector n w t
+  => Bool -- ^ exact
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 ashr = coerce AShr
 
-and :: forall width.
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+and
+  :: IntOrIntVector n w t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 and = coerce And
 
-or :: forall width.
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+or
+  :: IntOrIntVector n w t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 or = coerce Or
 
-xor :: forall width.
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+xor
+  :: IntOrIntVector n w t
+  => Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 xor = coerce Xor
 
-trunc :: forall width1 width2. (Known width2, width2 <= width1) =>
-    Constant ::: IntegerType width1 -> Constant ::: IntegerType width2
-trunc o1 = coerce Trunc o1 (val @(IntegerType width2))
+getelementptr
+  :: forall t pt as n idxs.
+     (SizedType t,
+      PtrOrPtrVector n as pt,
+      GEP_IndicesValid t idxs,
+      Known t, Known n)
+  => Bool -- ^ inbounds
+  -> Constant ::: pt -- ^ base address
+  -> GEP_Indices n Constant idxs
+  -> Constant ::: pt
+getelementptr inBounds address indices = assertLLVMType $
+  GetElementPtr inBounds (val @t) (coerce address) (gepIndicesToOperands indices)
 
-zext :: forall width1 width2. (Known width2, width1 <= width2) =>
-    Constant ::: IntegerType width1 -> Constant ::: IntegerType width2
-zext o1 = coerce ZExt o1 (val @(IntegerType width2))
+trunc
+  :: forall tyOut tyIn wOut wIn n.
+     (IntOrIntVector n wOut tyOut,
+      IntOrIntVector n wIn tyIn,
+      wOut < wIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+trunc o1 = coerce Trunc o1 (val @tyOut)
 
-sext :: forall width1 width2. (Known width2, width1 <= width2) =>
-    Constant ::: IntegerType width1 -> Constant ::: IntegerType width2
-sext o1 = coerce SExt o1 (val @(IntegerType width2))
+zext
+  :: forall tyOut tyIn wOut wIn n.
+     (IntOrIntVector n wOut tyOut,
+      IntOrIntVector n wIn tyIn,
+      wIn < wOut,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+zext o1 = coerce ZExt o1 (val @tyOut)
 
-fptoui :: forall fpt width. Known width =>
-    Constant ::: FloatingPointType fpt ->
-    Constant ::: IntegerType width
-fptoui o1 = coerce FPToUI o1 (val @(IntegerType width))
+sext
+  :: forall tyOut tyIn wOut wIn n.
+     (IntOrIntVector n wOut tyOut,
+      IntOrIntVector n wIn tyIn,
+      wIn < wOut,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+sext o1 = coerce SExt o1 (val @tyOut)
 
-fptosi :: forall fpt width. Known width =>
-    Constant ::: FloatingPointType fpt ->
-    Constant ::: IntegerType width
-fptosi o1 = coerce FPToSI o1 (val @(IntegerType width))
+fptoui
+  :: forall tyOut tyIn wOut fptIn n.
+     (IntOrIntVector n wOut tyOut,
+      FloatOrFloatVector n fptIn tyIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+fptoui o1 = coerce FPToUI o1 (val @tyOut)
 
-uitofp :: forall width fpt. Known fpt =>
-    Constant ::: IntegerType width ->
-    Constant ::: FloatingPointType fpt
-uitofp o1 = coerce UIToFP o1 (val @(FloatingPointType fpt))
+fptosi
+  :: forall tyOut tyIn wOut fptIn n.
+     (IntOrIntVector n wOut tyOut,
+      FloatOrFloatVector n fptIn tyIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+fptosi o1 = coerce FPToSI o1 (val @tyOut)
 
-sitofp :: forall width fpt. Known fpt =>
-    Constant ::: IntegerType width ->
-    Constant ::: FloatingPointType fpt
-sitofp o1 = coerce SIToFP o1 (val @(FloatingPointType fpt))
+uitofp
+  :: forall tyOut tyIn fptOut wIn n.
+     (FloatOrFloatVector n fptOut tyOut,
+      IntOrIntVector n wIn tyIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+uitofp o1 = coerce UIToFP o1 (val @tyOut)
 
-fptrunc :: forall fpt1 fpt2.
-    (Known fpt2, BitSizeOfFP fpt2 <= BitSizeOfFP fpt1) =>
-    Constant ::: FloatingPointType fpt1 ->
-    Constant ::: FloatingPointType fpt2
-fptrunc o1 = coerce FPTrunc o1 (val @(FloatingPointType fpt2))
+sitofp
+  :: forall tyOut tyIn fptOut wIn n.
+     (FloatOrFloatVector n fptOut tyOut,
+      IntOrIntVector n wIn tyIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+sitofp o1 = coerce SIToFP o1 (val @tyOut)
 
-fpext :: forall fpt1 fpt2. Known fpt2 =>
-    (Known fpt2, BitSizeOfFP fpt1 <= BitSizeOfFP fpt2) =>
-    Constant ::: FloatingPointType fpt1 ->
-    Constant ::: FloatingPointType fpt2
-fpext o1 = coerce FPExt o1 (val @(FloatingPointType fpt2))
+fptrunc
+  :: forall tyOut tyIn fptOut fptIn.
+     (tyOut ~ FloatingPointType fptOut,
+      tyIn ~ FloatingPointType fptIn,
+      BitSizeOfFP fptOut < BitSizeOfFP fptIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+fptrunc o1 = coerce FPTrunc o1 (val @tyOut)
 
-ptrtoint :: forall as width. Known width =>
-    Constant ::: PointerType as ->
-    Constant ::: IntegerType width
-ptrtoint o1 = coerce PtrToInt o1 (val @(IntegerType width))
+fpext
+  :: forall tyOut tyIn fptOut fptIn.
+     (tyOut ~ FloatingPointType fptOut,
+      tyIn ~ FloatingPointType fptIn,
+      BitSizeOfFP fptIn < BitSizeOfFP fptOut,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+fpext o1 = coerce FPExt o1 (val @tyOut)
 
-inttoptr :: forall as width. Known as =>
-    Constant ::: IntegerType width ->
-    Constant ::: PointerType as
-inttoptr o1 = coerce IntToPtr o1 (val @(PointerType as))
+ptrtoint
+  :: forall tyOut tyIn wOut asIn n.
+     (IntOrIntVector n wOut tyOut,
+      PtrOrPtrVector n asIn tyIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+ptrtoint o1 = coerce PtrToInt o1 (val @tyOut)
 
-bitcast :: forall t1 t2.
-    (Known t2, NonAggregate t1, NonAggregate t2, BitSizeOf t1 ~ BitSizeOf t2) =>
-    Constant ::: t1 -> Constant ::: t2
-bitcast o1 = coerce BitCast o1 (val @t2)
+inttoptr
+  :: forall tyOut tyIn asOut wIn n.
+     (PtrOrPtrVector n asOut tyOut,
+      IntOrIntVector n wIn tyIn,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+inttoptr o1 = coerce IntToPtr o1 (val @tyOut)
 
-icmp :: forall width.
-    IntegerPredicate ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+bitcast
+  :: forall tyOut tyIn.
+     (BitCastable tyOut,
+      BitCastable tyIn,
+      BitSizeOf tyIn ~ BitSizeOf tyOut,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+bitcast o1 = coerce BitCast o1 (val @tyOut)
+
+addrspacecast
+  :: forall tyOut tyIn asOut asIn n.
+     (PtrOrPtrVector n asOut tyOut,
+      PtrOrPtrVector n asIn tyIn,
+      AddrSpaceNotEqual asIn asOut,
+      Known tyOut)
+  => Constant ::: tyIn
+  -> Constant ::: tyOut
+addrspacecast o1 = coerce AddrSpaceCast o1 (val @tyOut)
+
+icmp
+  :: forall t w n.
+     IntOrIntVector n w t
+  => IntegerPredicate
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: ReplaceVectorType t I1
 icmp = coerce ICmp
 
-fcmp :: forall width.
-    FloatingPointPredicate ->
-    Constant ::: IntegerType width -> Constant ::: IntegerType width ->
-    Constant ::: IntegerType width
+fcmp
+  :: forall t fpt n.
+     FloatOrFloatVector n fpt t
+  => FloatingPointPredicate
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: ReplaceVectorType t I1
 fcmp = coerce FCmp
 
-select :: forall t.
-    Constant ::: IntegerType 1 ->
-    Constant ::: t -> Constant ::: t ->
-    Constant ::: t
+select
+  :: forall t predTy n.
+     (IntOrIntVector n 1 predTy,
+      SizedType t, -- can't select a token type, not sure about metadata or label
+      n ~ VectorLength t)
+  => Constant ::: predTy
+  -> Constant ::: t
+  -> Constant ::: t
+  -> Constant ::: t
 select = coerce Select
 
-extractElement :: forall n t width.
-    Constant ::: VectorType n t ->
-    Constant ::: IntegerType width ->
-    Constant ::: t
-extractElement = coerce ExtractElement
+extractelement
+  :: forall t n w.
+     (ValidType (VectorType n t),
+      ValidType (IntegerType w))
+  => Constant ::: VectorType n t
+  -> Constant ::: IntegerType w
+  -> Constant ::: t
+extractelement = coerce ExtractElement
 
-insertElement :: forall n t width.
-    Constant ::: VectorType n t ->
-    Constant ::: t ->
-    Constant ::: IntegerType width ->
-    Constant ::: VectorType n t
-insertElement = coerce InsertElement
+insertelement
+  :: forall t n w.
+     (ValidType (VectorType n t),
+      ValidType (IntegerType w))
+  => Constant ::: VectorType n t
+  -> Constant ::: t
+  -> Constant ::: IntegerType w
+  -> Constant ::: VectorType n t
+insertelement = coerce InsertElement
 
-shuffleVector :: forall n m t.
-    Constant ::: VectorType n t ->
-    Constant ::: VectorType n t ->
-    Constant ::: VectorType m (IntegerType 32) ->
-    Constant ::: VectorType m t
-shuffleVector = coerce ShuffleVector
+shufflevector
+  :: forall t n m.
+     (ValidType (VectorType n t),
+      ValidType (VectorType m t))
+  => Constant ::: VectorType n t
+  -> Constant ::: VectorType n t
+  -> Constant ::: VectorType m I32
+  -> Constant ::: VectorType m t
+shufflevector = coerce ShuffleVector
+
+-- | platform independant sizeof: a gep to the end of a nullptr and some bitcasting.
+sizeof
+  :: forall (t :: Type) w.
+     (SizedType t,
+      ValidType (IntegerType w),
+      Known t, Known w)
+  => Constant ::: IntegerType w
+sizeof = assertLLVMType $ NonTagged.sizeof (word32Val @w) (val @t)

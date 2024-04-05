@@ -2,7 +2,15 @@
 {-# LANGUAGE DataKinds #-}
 
 -- | This module provides a type-safe variant of "LLVM.AST.Float".
-module LLVM.AST.Tagged.Float where
+module LLVM.AST.Tagged.Float
+( SomeFloat
+, half
+, single
+, double
+, quadruple
+, x86_fp80
+, ppc_fp128
+) where
 
 import Data.Word
 

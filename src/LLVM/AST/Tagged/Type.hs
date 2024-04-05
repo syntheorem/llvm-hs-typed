@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 -- | This module provides a type-safe variant of "LLVM.AST.Type".
 module LLVM.AST.Tagged.Type
@@ -26,14 +27,28 @@ module LLVM.AST.Tagged.Type
 , PPC_FP128
 
 -- * Constraints
-, NonVoid
-, NonAggregate
-, BitSizeOfFP
+, ValidType
+, FirstClassType
+, SizedType
+, VectorElementType
+, ReturnType
+, AtomicType
+, ZeroInitializable
+, BitCastable
+, IntOrIntVector
+, FloatOrFloatVector
+, PtrOrPtrVector
+
+-- * Type-level functions
 , BitSizeOf
+, BitSizeOfFP
 , ValueAt
+, VectorLength
+, ReplaceVectorType
 ) where
 
-import GHC.Exts (Constraint)
+import Data.Type.Ord (type (<?))
+import GHC.TypeLits (type (^), Log2)
 
 import LLVM.AST.Type qualified as NonTagged
 import LLVM.AST.Tagged.AddrSpace
@@ -100,41 +115,153 @@ type FP128     = FloatingPointType FP128FP
 type X86_FP80  = FloatingPointType X86_FP80FP
 type PPC_FP128 = FloatingPointType PPC_FP128FP
 
--- | Ensures a type is not void
-type family NonVoid (t :: Type) :: Constraint where
-    NonVoid VoidType = TypeError (Text "Type must not be void")
-    NonVoid t         = ()
+type MaxIntegerWidth = 0x800000 -- max bitwidth is 2^23 according to LLVM language ref
+type MaxVectorLength = 0xFFFFFFFF -- vector length is stored in Word32
+type MaxArrayLength  = 0xFFFFFFFFFFFFFFFF -- array length is stored in Word64
+type MaxAddrSpace    = 0xFFFFFFFF -- address space is stored in Word32
 
--- | A non-aggregate, non-vector type. Basically, everything that can
--- be bitcaste’d into each other.
-type family NonAggregate (t :: Type) :: Constraint where
-    NonAggregate (IntegerType _)       = ()
-    NonAggregate (FloatingPointType _) = ()
-    NonAggregate (VectorType _ _ )     = ()
-    NonAggregate t = TypeError (ShowType t :<>: Text " is aggregate")
+-- | Constraint that ensures an LLVM type is well-formed.
+type family ValidType (t :: Type) :: Constraint where
+  ValidType VoidType                     = ()
+  ValidType (IntegerType w)              = (0 < w, w <= MaxIntegerWidth)
+  ValidType (PointerType (AddrSpace as)) = (as <= MaxAddrSpace)
+  ValidType (FloatingPointType _)        = ()
+  ValidType (FunctionType ret params)    = (ReturnType ret, AllSatisfy FirstClassType params)
+  ValidType (VectorType n t)             = (0 < n, n <= MaxVectorLength, VectorElementType t)
+  ValidType (StructureType _ ts)         = (AllSatisfy SizedType ts)
+  ValidType (ArrayType n t)              = (n < MaxArrayLength, SizedType t)
+  ValidType MetadataType                 = ()
+  ValidType TokenType                    = ()
+  ValidType LabelType                    = ()
 
--- | Bit widths of the given floating point type
-type family BitSizeOfFP (t :: FloatingPointType') :: Nat where
-    BitSizeOfFP HalfFP      = 16
-    BitSizeOfFP FloatFP     = 32
-    BitSizeOfFP DoubleFP    = 64
-    BitSizeOfFP FP128FP     = 128
-    BitSizeOfFP X86_FP80FP  = 80
-    BitSizeOfFP PPC_FP128FP = 128
+-- | Types that can be used in an LLVM register.
+-- This includes all types except void and function types.
+class ValidType t => FirstClassType t
+instance FirstClassType MetadataType
+instance FirstClassType TokenType
+instance FirstClassType LabelType
+instance FirstClassType (FloatingPointType fpt)
+instance ValidType (IntegerType w)      => FirstClassType (IntegerType w)
+instance ValidType (PointerType as)     => FirstClassType (PointerType as)
+instance ValidType (VectorType n t)     => FirstClassType (VectorType n t)
+instance ValidType (StructureType p ts) => FirstClassType (StructureType p ts)
+instance ValidType (ArrayType n t)      => FirstClassType (ArrayType n t)
 
--- | Bit widths of this nonaggregate type
+-- | Types with a size that can be used in array or structure types.
+-- This includes all first-class types except metadata, label, and token.
+class FirstClassType t => SizedType t
+instance SizedType (FloatingPointType fpt)
+instance ValidType (IntegerType w)      => SizedType (IntegerType w)
+instance ValidType (PointerType as)     => SizedType (PointerType as)
+instance ValidType (VectorType n t)     => SizedType (VectorType n t)
+instance ValidType (StructureType p ts) => SizedType (StructureType p ts)
+instance ValidType (ArrayType n t)      => SizedType (ArrayType n t)
+
+-- | Types that can be used as an element of a vector type.
+-- This includes all floating point, integer, and pointer types.
+class SizedType t => VectorElementType t
+instance VectorElementType (FloatingPointType fpt)
+instance ValidType (IntegerType w)  => VectorElementType (IntegerType w)
+instance ValidType (PointerType as) => VectorElementType (PointerType as)
+
+-- | Types that can be used as the return type of a function.
+-- Includes void and all first-class types other than metadata and label.
+class ValidType t => ReturnType t
+instance ReturnType TokenType -- only usable by intrinsics
+instance ReturnType (FloatingPointType fpt)
+instance ValidType (IntegerType w)      => ReturnType (IntegerType w)
+instance ValidType (PointerType as)     => ReturnType (PointerType as)
+instance ValidType (VectorType n t)     => ReturnType (VectorType n t)
+instance ValidType (StructureType p ts) => ReturnType (StructureType p ts)
+instance ValidType (ArrayType n t)      => ReturnType (ArrayType n t)
+
+-- | Types that can be used in an atomic operations.
+-- Includes pointer, integer, and floating point types with a power-of-two size.
+class SizedType t => AtomicType t
+instance ValidType (PointerType as) => AtomicType (PointerType as)
+instance (ValidType (IntegerType w), AtomicBitSize w) => AtomicType (IntegerType w)
+instance AtomicBitSize (BitSizeOfFP fpt) => AtomicType (FloatingPointType fpt)
+
+-- | Ensures a given bit width is valid for atomic operations.
+--
+-- LLVM requires atomic operations to use types whose bit width is a power of 2 that is at least 8.
+type family AtomicBitSize (s :: Nat) :: Constraint where
+  AtomicBitSize 0 = TypeError (Text "zero is not a power of two")
+  AtomicBitSize s = (8 <= s, s ~ (2 ^ Log2 s))
+
+-- | Types that can use a @zeroinitialize@ constant.
+--
+-- The LLVM language reference says that any type can be used with @zeroinitialize@, but @llvm-hs@
+-- only allows it to be used with array, structure, and vector types.
+class SizedType t => ZeroInitializable t
+instance ValidType (VectorType n t)     => ZeroInitializable (VectorType n t)
+instance ValidType (StructureType p ts) => ZeroInitializable (StructureType p ts)
+instance ValidType (ArrayType n t)      => ZeroInitializable (ArrayType n t)
+
+-- | Types that can be bitcasted.
+-- Includes all integer and floating point types, and vectors of those types.
+class SizedType t => BitCastable t
+instance ValidType (IntegerType w)                        => BitCastable (IntegerType w)
+instance ValidType (FloatingPointType fpt)                => BitCastable (FloatingPointType fpt)
+instance ValidType (VectorType n (IntegerType w))         => BitCastable (VectorType n (IntegerType w))
+instance ValidType (VectorType n (FloatingPointType fpt)) => BitCastable (VectorType n (FloatingPointType fpt))
+
+-- | A type that is either 'IntegerType' or 'VectorType' with 'IntegerType' elements.
+class BitCastable t => IntOrIntVector (len :: Maybe Nat) (width :: Nat) (t :: Type) | t -> width len
+instance ValidType (IntegerType w) =>
+  IntOrIntVector Nothing w (IntegerType w)
+instance ValidType (VectorType n (IntegerType w)) =>
+  IntOrIntVector (Just n) w (VectorType n (IntegerType w))
+
+-- | A type that is either 'FloatingPointType' or 'VectorType' with 'FloatingPointType' elements.
+class BitCastable t => FloatOrFloatVector (len :: Maybe Nat) (fpt :: FloatingPointType') (t :: Type) | t -> fpt len
+instance ValidType (FloatingPointType fpt) =>
+  FloatOrFloatVector Nothing fpt (FloatingPointType fpt)
+instance ValidType (VectorType n (FloatingPointType fpt)) =>
+  FloatOrFloatVector (Just n) fpt (VectorType n (FloatingPointType fpt))
+
+-- | A type that is either 'PointerType' or 'VectorType' with 'PointerType' elements.
+class SizedType t => PtrOrPtrVector (len :: Maybe Nat) (as :: AddrSpace') (t :: Type) | t -> as len
+instance ValidType (PointerType as) =>
+  PtrOrPtrVector Nothing as (PointerType as)
+instance ValidType (VectorType n (PointerType as)) =>
+  PtrOrPtrVector (Just n) as (VectorType n (PointerType as))
+
+-- | Size in bits of a Bitcastable type.
 type family BitSizeOf (t :: Type) :: Nat where
-    BitSizeOf (IntegerType w)         = w
-    BitSizeOf (FloatingPointType fpf) = BitSizeOfFP fpf
-    BitSizeOf (VectorType n t)        = n * BitSizeOf t
-    BitSizeOf t = TypeError (ShowType t :<>: Text " is aggregate")
+  BitSizeOf (IntegerType w)         = w
+  BitSizeOf (FloatingPointType fpf) = BitSizeOfFP fpf
+  BitSizeOf (VectorType n t)        = n * BitSizeOf t
+  BitSizeOf t = TypeError (ShowType t :<>: Text " is aggregate")
+
+-- | Bit width of the given floating point type.
+type family BitSizeOfFP (t :: FloatingPointType') :: Nat where
+  BitSizeOfFP HalfFP      = 16
+  BitSizeOfFP FloatFP     = 32
+  BitSizeOfFP DoubleFP    = 64
+  BitSizeOfFP FP128FP     = 128
+  BitSizeOfFP X86_FP80FP  = 80
+  BitSizeOfFP PPC_FP128FP = 128
 
 -- | Get the result of indexing into an aggregate type.
-type family ValueAt (t :: Type) (as :: [Nat]) :: Type where
-    ValueAt t '[] = t
-    ValueAt (StructureType _ ts) (n : as) = ValueAt (Nth ts n) as
-    ValueAt (ArrayType _ t2)     (_ : as) = ValueAt t2 as
-    ValueAt t _ = TypeError (Text "Cannot index into non-aggregate type " :$$: ShowType t)
+type family ValueAt (t :: Type) (idxs :: [Nat]) :: Type where
+  ValueAt t '[] = t
+  ValueAt (StructureType _ ts) (i : idxs) = ValueAt (Nth ts i) idxs
+  ValueAt (ArrayType n t)      (i : idxs)
+    = IfThenElse (i <? n)
+        (ValueAt t idxs)
+        (TypeError (Text "out-of-bounds index " :<>: ShowType i))
+  ValueAt t _ = TypeError (Text "index into non-aggregate type: " :<>: ShowType t)
+
+-- | If @t@ is a 'VectorType', result in @Just n@, where @n@ is the length of the vector.
+type family VectorLength (t :: Type) :: Maybe Nat where
+  VectorLength (VectorType n _) = Just n
+  VectorLength _                = Nothing
+
+-- | If @vt@ is a 'VectorType', replace its element type with @t@. Otherwise, return @t@.
+type family ReplaceVectorType (vt :: Type) (t :: Type) where
+  ReplaceVectorType (VectorType n _) t = VectorType n t
+  ReplaceVectorType _                t = t
 
 type instance Value FloatingPointType' = NonTagged.FloatingPointType
 instance Known HalfFP      where knownVal = NonTagged.HalfFP

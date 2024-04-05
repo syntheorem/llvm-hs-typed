@@ -14,24 +14,29 @@ module LLVM.AST.TypeLevel
 -- * Re-exports
 , Nat
 , Symbol
+, Constraint
 , TypeError
 , ErrorMessage(..)
 , type (-)
 , type (+)
 , type (*)
 , type (<=)
+, type (<)
 
 -- * Other utilities
 , Nth
 , NotNull
+, IfThenElse
+, AllSatisfy
 ) where
 
 import Data.ByteString.Short qualified as BS
 import Data.String.Encode (convertString)
 import Data.Word (Word, Word32, Word64)
+import Data.Type.Ord (type (<=), type (<))
 import GHC.Exts (Constraint)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, Nat, KnownNat, natVal,
-                    TypeError, ErrorMessage(..), type (-), type (+), type (*), type (<=))
+                    TypeError, ErrorMessage(..), type (-), type (+), type (*))
 
 -- | This type family indicates the value-level representation of a type-level
 -- type. Often these are the same.
@@ -66,6 +71,10 @@ instance (Known t, Known ts) => Known (t:ts) where knownVal = val @t : val @ts
 type instance Value (a, b) = (Value a, Value b)
 instance (Known a, Known b) => Known '(a, b) where knownVal = (val @a, val @b)
 
+type instance Value (Maybe a) = Maybe (Value a)
+instance Known Nothing where knownVal = Nothing
+instance Known a => Known (Just a) where knownVal = Just (val @a)
+
 type instance Value Bool = Bool
 instance Known True where knownVal = True
 instance Known False where knownVal = False
@@ -78,11 +87,21 @@ instance KnownNat n => Known n where knownVal = natVal @n undefined
 
 -- | Get the nth element of a type-level list.
 type family Nth (xs :: [a]) n :: a where
-    Nth '[] 0 = TypeError (Text "empty list")
+    Nth '[] 0 = TypeError (Text "out-of-bounds index")
     Nth (x:xs) 0 = x
     Nth (x:xs) n = Nth xs (n - 1)
 
 -- | Constraint requiring a type-level list to be non-empty.
 type family NotNull (xs :: [a]) :: Constraint  where
-    NotNull '[] = TypeError (Text "The list must not be empty")
+    NotNull '[] = TypeError (Text "empty list")
     NotNull _ = ()
+
+-- | If-expression at the type-level.
+type family IfThenElse (cond :: Bool) (t :: k) (e :: k) :: k where
+    IfThenElse True  t _ = t
+    IfThenElse False _ e = e
+
+-- | Constraint ensuring that all types in a list satisfy a given constraint.
+type family AllSatisfy (c :: k -> Constraint) (ks :: [k]) :: Constraint where
+    AllSatisfy _ '[]    = ()
+    AllSatisfy c (k:ks) = (c k, AllSatisfy c ks)

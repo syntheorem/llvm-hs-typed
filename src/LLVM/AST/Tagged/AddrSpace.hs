@@ -11,5 +11,9 @@ import LLVM.AST.TypeLevel
 -- be used at the type-level.
 data AddrSpace' = AddrSpace Nat
 
+type family AddrSpaceNotEqual (as1 :: AddrSpace') (as2 :: AddrSpace') :: Constraint where
+  AddrSpaceNotEqual (AddrSpace n) (AddrSpace n) = TypeError (Text "address spaces are equal")
+  AddrSpaceNotEqual _ _ = ()
+
 type instance Value AddrSpace' = NonTagged.AddrSpace
 instance Known n => Known (AddrSpace n) where knownVal = NonTagged.AddrSpace (word32Val @n)

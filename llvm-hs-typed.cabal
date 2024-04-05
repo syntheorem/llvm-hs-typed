@@ -51,21 +51,28 @@ library
    LLVM.AST.Tagged.DataLayout
    LLVM.AST.Tagged.RMWOperation
    LLVM.AST.Tagged.IRBuilder
+   LLVM.AST.Tagged.GetElementPtr
   build-depends:
     base            >= 4.7 && <5,
-    llvm-hs-pure    == 15.0.*,
-    -- llvm-hs-pretty  >= 0.2,
     bytestring      >= 0.10 && < 0.13,
-    encode-string   == 0.1.*
+    containers      >= 0.4.2.1,
+    encode-string   == 0.1.*,
+    llvm-hs-pure    == 15.0.*,
+    mtl             >= 2.1
   hs-source-dirs:      src
   default-language:    GHC2021
   default-extensions:
     AllowAmbiguousTypes
+    BlockArguments
     DataKinds
+    DefaultSignatures
+    DerivingStrategies
     FunctionalDependencies
     GADTs
     NoStarIsType
+    OverloadedStrings
     PatternSynonyms
+    RecordWildCards
     TypeFamilies
     TypeFamilyDependencies
     ViewPatterns
