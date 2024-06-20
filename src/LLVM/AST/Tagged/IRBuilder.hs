@@ -43,6 +43,7 @@ import GHC.Stack (HasCallStack)
 
 import Control.Monad.Cont (MonadCont, ContT)
 import Control.Monad.Except (MonadError, ExceptT)
+import Control.Monad.Fix (MonadFix)
 import Control.Monad.Identity (IdentityT, runIdentity, Identity)
 import Control.Monad.Reader (MonadReader, ReaderT)
 import Control.Monad.RWS.Lazy qualified as Lazy
