@@ -77,20 +77,20 @@ import Data.Coerce
 
 int
   :: forall w.
-     (ValidType (IntegerType w), Known w)
+     (FirstClassType (IntegerType w), Known w)
   => Integer
   -> Constant ::: IntegerType w
 int value = assertLLVMType $ Int (word32Val @w) value
 
 float
-  :: ValidType (FloatingPointType fpt)
+  :: FirstClassType (FloatingPointType fpt)
   => SomeFloat :::: fpt
   -> Constant ::: FloatingPointType fpt
 float = coerce Float
 
 struct
   :: forall packed ts.
-     (ValidType (StructureType packed ts),
+     (FirstClassType (StructureType packed ts),
       Known packed)
   => Constant :::* ts
   -> Constant ::: (StructureType packed ts)
@@ -98,20 +98,20 @@ struct xs = assertLLVMType $ Struct Nothing (val @packed) (unTypedList xs)
 
 array
   :: forall n t.
-     (ValidType (ArrayType n t), Known t)
+     (FirstClassType (ArrayType n t), Known t)
   => n × (Constant ::: t)
   -> Constant ::: (ArrayType n t)
 array vals = coerce Array (val @t) (unCounted vals)
 
 vector
-  :: ValidType (VectorType n t)
+  :: FirstClassType (VectorType n t)
   => n × (Constant ::: t)
   -> Constant ::: (VectorType n t)
 vector vals = coerce Vector (unCounted vals)
 
 null
   :: forall as.
-     (ValidType (PointerType as), Known as)
+     (FirstClassType (PointerType as), Known as)
   => Constant ::: PointerType as
 null = coerce Null (val @(PointerType as))
 
@@ -129,14 +129,14 @@ undef
 undef = coerce Undef (val @t)
 
 blockaddress
-  :: ValidType (PointerType as)
+  :: FirstClassType (PointerType as)
   => Name ::: PointerType as -- ^ function name
   -> Name ::: LabelType      -- ^ block label
   -> Constant ::: PointerType as
 blockaddress = coerce BlockAddress
 
 -- | Reference to the named global variable.
-global :: ValidType t => Name ::: t -> Constant ::: t
+global :: FirstClassType t => Name ::: t -> Constant ::: t
 global = coerce GlobalReference
 
 tokenNone :: Constant ::: TokenType
@@ -432,8 +432,8 @@ select = coerce Select
 
 extractelement
   :: forall t n w.
-     (ValidType (VectorType n t),
-      ValidType (IntegerType w))
+     (FirstClassType (VectorType n t),
+      FirstClassType (IntegerType w))
   => Constant ::: VectorType n t
   -> Constant ::: IntegerType w
   -> Constant ::: t
@@ -441,8 +441,8 @@ extractelement = coerce ExtractElement
 
 insertelement
   :: forall t n w.
-     (ValidType (VectorType n t),
-      ValidType (IntegerType w))
+     (FirstClassType (VectorType n t),
+      FirstClassType (IntegerType w))
   => Constant ::: VectorType n t
   -> Constant ::: t
   -> Constant ::: IntegerType w
@@ -451,8 +451,8 @@ insertelement = coerce InsertElement
 
 shufflevector
   :: forall t n m.
-     (ValidType (VectorType n t),
-      ValidType (VectorType m t))
+     (FirstClassType (VectorType n t),
+      FirstClassType (VectorType m t))
   => Constant ::: VectorType n t
   -> Constant ::: VectorType n t
   -> Constant ::: VectorType m I32
@@ -463,7 +463,7 @@ shufflevector = coerce ShuffleVector
 sizeof
   :: forall (t :: Type) w.
      (SizedType t,
-      ValidType (IntegerType w),
+      FirstClassType (IntegerType w),
       Known t, Known w)
   => Constant ::: IntegerType w
 sizeof = assertLLVMType $ NonTagged.sizeof (word32Val @w) (val @t)

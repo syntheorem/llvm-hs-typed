@@ -3,7 +3,7 @@
 -- | This module provides a type-safe variant of "LLVM.AST.Instruction".
 --
 -- 'Instruction's are tagged with their result type, but 'Terminator's have two tags. Given
--- @Terminator ::: t ::: a@, @a@ is the result type of the terminator, and @t@ is the return type
+-- @Terminator :::? r :::? a@, @a@ is the result type of the terminator, and @t@ is the return type
 -- of the function the terminator is in. This enables type-level enforcement of return types.
 module LLVM.AST.Tagged.Instruction
 ( InstructionMetadata
@@ -144,15 +144,15 @@ import LLVM.AST.Tagged.InlineAssembly (InlineAssembly)
 -- | We distuingish between returning from a @void@ function and otherwise by
 -- two different smart constructors (instead of passing a @Maybe@ to @Ret@).
 ret
-  :: FirstClassType t
+  :: ReturnType t
   => Operand ::: t
   -> InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::! t :::? VoidResult
 ret o im = coerce Ret (Just o) im
 
 ret_
   :: InstructionMetadata
-  -> Terminator ::: VoidType ::: VoidType
+  -> Terminator :::? VoidResult :::? VoidResult
 ret_ im = coerce (Ret Nothing) im
 
 br_cond
@@ -160,36 +160,36 @@ br_cond
   -> Name ::: LabelType
   -> Name ::: LabelType
   -> InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 br_cond o1 n1 n2 im = coerce CondBr o1 n1 n2 im
 
 br
   :: Name ::: LabelType
   -> InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 br n im = coerce Br n im
 
 switch
-  :: ValidType (IntegerType w)
+  :: FirstClassType (IntegerType w)
   => Operand ::: IntegerType w
   -> Name ::: LabelType
   -> [(Constant ::: IntegerType w, Name ::: LabelType)]
   -> InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 switch o n targets im = coerce Switch o n targets im
 
 indirectbr
-  :: ValidType (PointerType as)
+  :: FirstClassType (PointerType as)
   => Operand ::: PointerType as
   -> [(Name ::: LabelType)]
   -> InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 indirectbr o ns im = coerce IndirectBr o ns im
 
 invoke
-  :: forall ret args as t.
-     (ValidType (FunctionType ret args),
-      ValidType (PointerType as),
+  :: forall ret args as r.
+     (ValidFunctionType ret args,
+      FirstClassType (PointerType as),
       Known ret)
   => CallingConvention
   -> [ParameterAttribute] -- ^ return attributes
@@ -199,34 +199,34 @@ invoke
   -> Name ::: LabelType -- ^ return destination
   -> Name ::: LabelType -- ^ exception destination
   -> InstructionMetadata
-  -> Terminator ::: t ::: ret
+  -> Terminator :::? r :::? ret
 invoke cc pas o params
   = coerce Invoke cc pas (val @ret) (Right (coerce o) :: CallableOperand) (unTypedList params)
 
 invoke_asm
-  :: forall ret args as t.
-     (ValidType (FunctionType ret args),
-      ValidType (PointerType as),
+  :: forall ret args as r.
+     (ValidFunctionType ret args,
+      FirstClassType (PointerType as),
       Known ret)
   => CallingConvention
   -> [ParameterAttribute] -- ^ return attributes
-  -> InlineAssembly ::: FunctionType ret args
+  -> InlineAssembly :::: FunctionType ret args
   -> (Operand, [ParameterAttribute]) :::* args
   -> [Either GroupID FunctionAttribute] -- ^ function attributes
   -> Name ::: LabelType -- ^ return destination
   -> Name ::: LabelType -- ^ exception destination
   -> InstructionMetadata
-  -> Terminator ::: t ::: ret
+  -> Terminator :::? r :::? ret
 invoke_asm cc pas ia params
   = coerce Invoke cc pas (val @ret) (Left (coerce ia) :: CallableOperand) (unTypedList params)
 
 -- | Invoke a varargs function.
 -- Argument list is split between the nonvariable and variable arguments.
 invoke_va
-  :: forall ret args varargs as t.
-     (ValidType (FunctionType ret args),
+  :: forall ret args varargs as r.
+     (ValidFunctionType ret args,
       AllSatisfy FirstClassType varargs,
-      ValidType (PointerType as),
+      FirstClassType (PointerType as),
       Known ret, Known args)
   => CallingConvention
   -> [ParameterAttribute] -- ^ return attributes
@@ -237,7 +237,7 @@ invoke_va
   -> Name ::: LabelType -- ^ return destination
   -> Name ::: LabelType -- ^ exception destination
   -> InstructionMetadata
-  -> Terminator ::: t ::: ret
+  -> Terminator :::? r :::? ret
 invoke_va cc pas o args varargs = coerce Invoke cc pas ty co argList
   where
     ty = NonTagged.FunctionType (val @ret) (val @args) True
@@ -250,26 +250,26 @@ resume
   :: FirstClassType t
   => Operand ::: t
   -> InstructionMetadata
-  -> Terminator ::: t2 ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 resume o im = coerce Resume o im
 
 unreachable
   :: InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 unreachable im = coerce Unreachable im
 
 cleanupret
   :: Operand ::: TokenType
   -> Maybe (Name ::: LabelType)
   -> InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 cleanupret o mbn im = coerce CleanupRet o mbn im
 
 catchret
   :: Operand ::: TokenType
   -> Name ::: LabelType
   -> InstructionMetadata
-  -> Terminator ::: t ::: VoidType
+  -> Terminator :::? r :::? VoidResult
 catchret o n im = coerce CatchRet o n im
 
 catchswitch
@@ -277,7 +277,7 @@ catchswitch
   -> NonEmpty (Name ::: LabelType)
   -> Maybe (Name ::: LabelType)
   -> InstructionMetadata
-  -> Terminator ::: t ::: TokenType
+  -> Terminator :::? r :::! TokenType
 catchswitch o ns n im = coerce CatchSwitch o ns n im
 
 -- instructions --
@@ -287,7 +287,7 @@ fneg
   => FastMathFlags
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 fneg = coerce FNeg
 
 add
@@ -297,7 +297,7 @@ add
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 add = coerce Add
 
 fadd
@@ -306,7 +306,7 @@ fadd
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 fadd = coerce FAdd
 
 sub
@@ -316,7 +316,7 @@ sub
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 sub = coerce Sub
 
 fsub
@@ -325,7 +325,7 @@ fsub
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 fsub = coerce FSub
 
 mul
@@ -335,7 +335,7 @@ mul
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 mul = coerce Mul
 
 fmul
@@ -344,7 +344,7 @@ fmul
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 fmul = coerce FMul
 
 udiv
@@ -353,7 +353,7 @@ udiv
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 udiv = coerce UDiv
 
 sdiv
@@ -362,7 +362,7 @@ sdiv
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 sdiv = coerce SDiv
 
 fdiv
@@ -371,7 +371,7 @@ fdiv
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 fdiv = coerce FDiv
 
 urem
@@ -379,7 +379,7 @@ urem
   => Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 urem = coerce URem
 
 srem
@@ -387,7 +387,7 @@ srem
   => Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 srem = coerce SRem
 
 frem
@@ -396,7 +396,7 @@ frem
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 frem = coerce FRem
 
 shl
@@ -406,7 +406,7 @@ shl
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 shl = coerce Shl
 
 lshr
@@ -415,7 +415,7 @@ lshr
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 lshr = coerce LShr
 
 ashr
@@ -424,7 +424,7 @@ ashr
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 ashr = coerce AShr
 
 and
@@ -432,7 +432,7 @@ and
   => Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 and = coerce And
 
 or
@@ -440,7 +440,7 @@ or
   => Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 or = coerce Or
 
 xor
@@ -448,7 +448,7 @@ xor
   => Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 xor = coerce Xor
 
 -- | Allocate values on the stack.
@@ -463,90 +463,90 @@ xor = coerce Xor
 alloca
   :: forall t as w.
      (SizedType t, Known t,
-      ValidType (IntegerType w),
-      ValidType (PointerType as))
+      FirstClassType (IntegerType w),
+      FirstClassType (PointerType as))
   => Operand ::: IntegerType w -- ^ number of elements
   -> Word32 -- ^ alignment
   -> InstructionMetadata
-  -> Instruction ::: PointerType as
+  -> Instruction :::! PointerType as
 alloca o align im = assertLLVMType $ Alloca (val @t) (Just (coerce o)) align im
 
 -- | 'alloca' a single element
 alloca1
   :: forall t as.
      (SizedType t, Known t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Word32 -- ^ alignment
   -> InstructionMetadata
-  -> Instruction ::: PointerType as
+  -> Instruction :::! PointerType as
 alloca1 align im = assertLLVMType $ Alloca (val @t) Nothing align im
 
 -- | 'alloca' the builtin @%struct.va_list@ type for use with varargs.
 alloca_va_list
-  :: (ValidType (PointerType as))
+  :: (FirstClassType (PointerType as))
   => InstructionMetadata
-  -> Instruction ::: PointerType as
+  -> Instruction :::! PointerType as
 alloca_va_list im = assertLLVMType $ Alloca va_list_type Nothing 0 im
   where va_list_type = NonTagged.NamedTypeReference (Name "struct.va_list")
 
 load
   :: forall t as.
      (SizedType t, Known t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Bool -- ^ volatile
   -> Operand ::: PointerType as
   -> Word32 -- ^ alignment
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 load v o = coerce Load v (val @t) o (Nothing :: Maybe Atomicity)
 
 load_atomic
   :: forall t as.
      (AtomicType t, Known t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Bool -- ^ volatile
   -> Operand ::: PointerType as
   -> Atomicity
   -> Word32 -- ^ alignment
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 load_atomic v o a = coerce Load v (val @t) o (Just a)
 
 store
   :: forall t as.
      (SizedType t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Bool -- ^ volatile
   -> Operand ::: PointerType as
   -> Operand ::: t
   -> Word32 -- ^ alignment
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 store v o1 o2 = coerce Store v o1 o2 (Nothing :: Maybe Atomicity)
 
 store_atomic
   :: forall t as.
      (AtomicType t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Bool -- ^ volatile
   -> Operand ::: PointerType as
   -> Operand ::: t
   -> Atomicity
   -> Word32 -- ^ alignment
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 store_atomic v o1 o2 a = coerce Store v o1 o2 (Just a)
 
 fence
   :: Atomicity
   -> InstructionMetadata
-  -> Instruction ::: VoidType
+  -> Instruction :::? VoidResult
 fence = coerce Fence
 
 cmpxchg
   :: forall t as.
      (AtomicType t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Bool -- ^ volatile
   -> Operand ::: PointerType as
   -> Operand ::: t -- ^ expected value
@@ -555,13 +555,13 @@ cmpxchg
   -> Atomicity -- ^ syncscope and memory ordering on success
   -> MemoryOrdering -- ^ memory ordering on failure
   -> InstructionMetadata
-  -> Instruction ::: StructureType False [t, I1]
+  -> Instruction :::! StructureType False [t, I1]
 cmpxchg = coerce CmpXchg
 
 atomicrmw
   :: forall t as.
      (AtomicType t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Bool -- ^ volatile
   -> RMWOperation ::: t
   -> Operand ::: PointerType as
@@ -569,7 +569,7 @@ atomicrmw
   -> Word32 -- ^ alignment
   -> Atomicity
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 atomicrmw = coerce AtomicRMW
 
 getelementptr
@@ -582,7 +582,7 @@ getelementptr
   -> Operand ::: pt -- ^ base address
   -> GEP_Indices n Operand idxs
   -> InstructionMetadata
-  -> Instruction ::: pt
+  -> Instruction :::! pt
 getelementptr inBounds address indices im = assertLLVMType $
   GetElementPtr inBounds (val @t) (coerce address) (gepIndicesToOperands indices) im
 
@@ -594,7 +594,7 @@ trunc
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 trunc o1 = coerce Trunc o1 (val @tyOut)
 
 zext
@@ -605,7 +605,7 @@ zext
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 zext o1 = coerce ZExt o1 (val @tyOut)
 
 sext
@@ -616,7 +616,7 @@ sext
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 sext o1 = coerce SExt o1 (val @tyOut)
 
 fptoui
@@ -626,7 +626,7 @@ fptoui
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 fptoui o1 = coerce FPToUI o1 (val @tyOut)
 
 fptosi
@@ -636,7 +636,7 @@ fptosi
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 fptosi o1 = coerce FPToSI o1 (val @tyOut)
 
 uitofp
@@ -646,7 +646,7 @@ uitofp
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 uitofp o1 = coerce UIToFP o1 (val @tyOut)
 
 sitofp
@@ -656,7 +656,7 @@ sitofp
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 sitofp o1 = coerce SIToFP o1 (val @tyOut)
 
 fptrunc
@@ -667,7 +667,7 @@ fptrunc
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 fptrunc o1 = coerce FPTrunc o1 (val @tyOut)
 
 fpext
@@ -678,7 +678,7 @@ fpext
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 fpext o1 = coerce FPExt o1 (val @tyOut)
 
 ptrtoint
@@ -688,7 +688,7 @@ ptrtoint
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 ptrtoint o1 = coerce PtrToInt o1 (val @tyOut)
 
 inttoptr
@@ -698,7 +698,7 @@ inttoptr
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 inttoptr o1 = coerce IntToPtr o1 (val @tyOut)
 
 bitcast
@@ -709,7 +709,7 @@ bitcast
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 bitcast o1 = coerce BitCast o1 (val @tyOut)
 
 addrspacecast
@@ -720,39 +720,39 @@ addrspacecast
       Known tyOut)
   => Operand ::: tyIn
   -> InstructionMetadata
-  -> Instruction ::: tyOut
+  -> Instruction :::! tyOut
 addrspacecast o1 = coerce AddrSpaceCast o1 (val @tyOut)
 
 extractelement
   :: forall t n w.
-     (ValidType (VectorType n t),
-      ValidType (IntegerType w))
+     (FirstClassType (VectorType n t),
+      FirstClassType (IntegerType w))
   => Operand ::: VectorType n t
   -> Operand ::: IntegerType w
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 extractelement = coerce ExtractElement
 
 insertelement
   :: forall t n w.
-     (ValidType (VectorType n t),
-      ValidType (IntegerType w))
+     (FirstClassType (VectorType n t),
+      FirstClassType (IntegerType w))
   => Operand ::: VectorType n t
   -> Operand ::: t
   -> Operand ::: IntegerType w
   -> InstructionMetadata
-  -> Instruction ::: VectorType n t
+  -> Instruction :::! VectorType n t
 insertelement = coerce InsertElement
 
 shufflevector
   :: forall t n m.
-     (ValidType (VectorType n t),
-      ValidType (VectorType m t))
+     (FirstClassType (VectorType n t),
+      FirstClassType (VectorType m t))
   => Operand ::: VectorType n t
   -> Operand ::: VectorType n t
   -> m × Int32 -- TODO: have this be (Constant ::: VectorType m I32) instead
   -> InstructionMetadata
-  -> Instruction ::: VectorType m t
+  -> Instruction :::! VectorType m t
 shufflevector o1 o2 mask = coerce ShuffleVector o1 o2 (unCounted mask)
 
 extractvalue
@@ -760,7 +760,7 @@ extractvalue
      (SizedType t, NotNull idxs, Known idxs)
   => Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: ValueAt t idxs
+  -> Instruction :::! ValueAt t idxs
 extractvalue o = coerce ExtractValue o (map fromIntegral (val @idxs) :: [Word32])
 
 insertvalue
@@ -769,7 +769,7 @@ insertvalue
   => Operand ::: t
   -> Operand ::: ValueAt t idxs
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 insertvalue o1 o2 = coerce InsertValue o1 o2 (map fromIntegral (val @idxs) :: [Word32])
 
 icmp
@@ -779,7 +779,7 @@ icmp
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: ReplaceVectorType t I1
+  -> Instruction :::! ReplaceVectorType t I1
 icmp = coerce ICmp
 
 fcmp
@@ -789,7 +789,7 @@ fcmp
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: ReplaceVectorType t I1
+  -> Instruction :::! ReplaceVectorType t I1
 fcmp = coerce FCmp
 
 -- can't select a token type, not sure about metadata or label
@@ -798,7 +798,7 @@ phi
      (SizedType t, Known t)
   => [(Operand ::: t, Name ::: LabelType)]
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 phi = coerce Phi (val @t)
 
 -- TODO: SizedType might be too restrictive, should it be FirstClassType?
@@ -807,7 +807,7 @@ freeze
      (SizedType t, Known t)
   => Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 freeze o = coerce Freeze o (val @t)
 
 -- can't select a token type, not sure about metadata or label
@@ -820,13 +820,13 @@ select
   -> Operand ::: t
   -> Operand ::: t
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 select = coerce Select
 
 call
   :: forall ret args as.
-     (ValidType (FunctionType ret args),
-      ValidType (PointerType as),
+     (ValidFunctionType ret args,
+      FirstClassType (PointerType as),
       Known ret)
   => Maybe TailCallKind
   -> CallingConvention
@@ -835,22 +835,22 @@ call
   -> (Operand, [ParameterAttribute]) :::* args
   -> [Either GroupID FunctionAttribute] -- ^ function attributes
   -> InstructionMetadata
-  -> Instruction ::: ret
+  -> Instruction :::? ret
 call tc cc pas o params
   = coerce Call tc cc pas (val @ret) (Right (coerce o) :: CallableOperand) (unTypedList params)
 
 call_asm
   :: forall ret args as.
-     (ValidType (FunctionType ret args),
+     (ValidFunctionType ret args,
       Known ret, Known args)
   => Maybe TailCallKind
   -> CallingConvention
   -> [ParameterAttribute] -- ^ return attributes
-  -> InlineAssembly ::: FunctionType ret args
+  -> InlineAssembly :::: FunctionType ret args
   -> (Operand, [ParameterAttribute]) :::* args
   -> [Either GroupID FunctionAttribute] -- ^ function attributes
   -> InstructionMetadata
-  -> Instruction ::: ret
+  -> Instruction :::? ret
 call_asm tc cc pas ia params
   = coerce Call tc cc pas (val @ret) (Left (coerce ia) :: CallableOperand) (unTypedList params)
 
@@ -858,9 +858,9 @@ call_asm tc cc pas ia params
 -- Argument list is split between the nonvariable and variable arguments.
 call_va
   :: forall ret args varargs as.
-     (ValidType (FunctionType ret args),
+     (ValidFunctionType ret args,
       AllSatisfy FirstClassType varargs,
-      ValidType (PointerType as),
+      FirstClassType (PointerType as),
       Known ret, Known args)
   => Maybe TailCallKind
   -> CallingConvention
@@ -870,7 +870,7 @@ call_va
   -> (Operand, [ParameterAttribute]) :::* varargs -- ^ variable arguments
   -> [Either GroupID FunctionAttribute] -- ^ function attributes
   -> InstructionMetadata
-  -> Instruction ::: ret
+  -> Instruction :::? ret
 call_va tc cc pas o args varargs = coerce Call tc cc pas ty co argList
   where
     ty = NonTagged.FunctionType (val @ret) (val @args) True
@@ -880,10 +880,10 @@ call_va tc cc pas o args varargs = coerce Call tc cc pas ty co argList
 va_arg
   :: forall t as.
      (SizedType t, Known t,
-      ValidType (PointerType as))
+      FirstClassType (PointerType as))
   => Operand ::: PointerType as -- ^ va_list pointer
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 va_arg o = coerce VAArg o (val @t)
 
 catchpad
@@ -891,7 +891,7 @@ catchpad
   => Operand ::: TokenType
   -> Operand :::* args -- ^ argument types depend on the target and exception handler personality
   -> InstructionMetadata
-  -> Instruction ::: TokenType
+  -> Instruction :::! TokenType
 catchpad o args = coerce CatchPad (unTyped o) (unTypedList args)
 
 cleanuppad
@@ -899,7 +899,7 @@ cleanuppad
   => Operand ::: TokenType
   -> Operand :::* args -- ^ argument types depend on the target and exception handler personality
   -> InstructionMetadata
-  -> Instruction ::: TokenType
+  -> Instruction :::! TokenType
 cleanuppad o args = coerce CleanupPad (unTyped o) (unTypedList args)
 
 landingpad
@@ -909,7 +909,7 @@ landingpad
   => Bool -- ^ cleanup
   -> LandingPadClause :::* clauses
   -> InstructionMetadata
-  -> Instruction ::: t
+  -> Instruction :::! t
 landingpad cleanup clauses = coerce LandingPad (val @t) cleanup (unTypedList clauses)
 
 catch
@@ -919,7 +919,7 @@ catch
 catch = coerce Catch
 
 filter
-  :: ValidType (ArrayType n t)
+  :: FirstClassType (ArrayType n t)
   => Constant ::: ArrayType n t
   -> LandingPadClause ::: ArrayType n t
 filter = coerce Filter
@@ -931,20 +931,18 @@ filter = coerce Filter
 -- The returned 'Named Instruction' does not carry a type, because it is not
 -- useful in any way.
 name
-  :: FirstClassType t
-  => Name ::: t
-  -> a ::: t
+  :: Name ::: t
+  -> a :::! t
   -> Named a
 name n a = unTyped n := unTyped a
 
 -- | If you do have a void instruction, you must use 'do'' and not pass a name to it.
-do' :: a ::: VoidType -> Named a
+do' :: a :::? VoidResult -> Named a
 do' a = Do (unTyped a)
 
 -- | Helper function to construct an argument to a call or invoke instruction.
 arg
-  :: FirstClassType t
-  => Operand ::: t
+  :: Operand ::: t
   -> [ParameterAttribute]
   -> (Operand, [ParameterAttribute]) ::: t
 arg o pas = assertLLVMType (coerce o, pas)

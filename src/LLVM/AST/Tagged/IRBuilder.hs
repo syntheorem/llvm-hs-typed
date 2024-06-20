@@ -33,10 +33,7 @@ module LLVM.AST.Tagged.IRBuilder
 , execIRBuilderT
 
 -- ** Core functionality
-, inst
-, inst_
-, term
-, term_
+, emit
 , block
 , named
 ) where
@@ -89,7 +86,7 @@ import LLVM.AST.TypeLevel
 import LLVM.AST.Tagged.ParameterAttribute (ParameterAttribute)
 import LLVM.AST.Tagged (Definition(..))
 
-newtype IRBuilderT (ret :: Type) m a = IRBuilderT (StateT (IRBuilderState ret) m a)
+newtype IRBuilderT (ret :: Result') m a = IRBuilderT (StateT (IRBuilderState ret) m a)
   deriving newtype
     ( Functor, Alternative, Applicative, Monad, MonadCont, MonadFix, MonadPlus
     , MonadError e, MonadIO, MonadReader r, MonadFail, MonadTrans, MonadWriter w
@@ -98,7 +95,7 @@ newtype IRBuilderT (ret :: Type) m a = IRBuilderT (StateT (IRBuilderState ret) m
 
 type IRBuilder ret = IRBuilderT ret Identity
 
-class Monad m => MonadIRBuilder (ret :: Type) m | m -> ret where
+class Monad m => MonadIRBuilder (ret :: Result') m | m -> ret where
   liftIRState :: State (IRBuilderState ret) a -> m a
 
   default liftIRState :: (MonadTrans t, MonadIRBuilder ret m', m ~ t m') => State (IRBuilderState ret) a -> m a
@@ -108,16 +105,16 @@ instance Monad m => MonadIRBuilder ret (IRBuilderT ret m) where
   liftIRState (StateT s) = IRBuilderT $ StateT $ pure . runIdentity . s
 
 -- | Builder monad state
-data IRBuilderState (ret :: Type) = IRBuilderState
+data IRBuilderState (ret :: Result') = IRBuilderState
   { builderSupply :: !Word
   , builderUsedNames :: !(Map ShortByteString Word)
   , builderNameSuggestion :: !(Maybe ShortByteString)
-  , builderBlocks :: [BasicBlock ::: ret]
+  , builderBlocks :: [BasicBlock :::? ret]
   , builderBlockName :: !(Maybe (Name ::: LabelType))
   , builderBlockInsts :: [Named Instruction]
   }
 
-runIRBuilderT :: (HasCallStack, Monad m) => IRBuilderT ret m a -> m (a, [BasicBlock ::: ret])
+runIRBuilderT :: (HasCallStack, Monad m) => IRBuilderT ret m a -> m (a, [BasicBlock :::? ret])
 runIRBuilderT builder = do
   (a, s) <- runStateT m initState
   pure (a, reverse (builderBlocks s))
@@ -138,13 +135,13 @@ runIRBuilderT builder = do
       , builderBlockInsts = []
       }
 
-runIRBuilder :: HasCallStack => IRBuilder ret a -> (a, [BasicBlock ::: ret])
+runIRBuilder :: HasCallStack => IRBuilder ret a -> (a, [BasicBlock :::? ret])
 runIRBuilder = runIdentity . runIRBuilderT
 
-execIRBuilderT :: (HasCallStack, Monad m) => IRBuilderT ret m a -> m [BasicBlock ::: ret]
+execIRBuilderT :: (HasCallStack, Monad m) => IRBuilderT ret m a -> m [BasicBlock :::? ret]
 execIRBuilderT = fmap snd . runIRBuilderT
 
-execIRBuilder :: HasCallStack => IRBuilder ret a -> [BasicBlock ::: ret]
+execIRBuilder :: HasCallStack => IRBuilder ret a -> [BasicBlock :::? ret]
 execIRBuilder = snd . runIRBuilder
 
 -- | Generate a fresh name. The resulting name is numbered or
@@ -183,39 +180,39 @@ ensureBlock = do
       liftIRState $ modify \s -> s { builderBlockName = Just name }
       pure name
 
-appendInst :: MonadIRBuilder ret m => Named Instruction -> m ()
-appendInst ni = do
-  ensureBlock
-  liftIRState $ modify \s -> s { builderBlockInsts = ni : builderBlockInsts s }
+class NameResult o (r :: Result') | r -> o where
+  nameResult :: MonadIRBuilder ret m => e :::? r -> m (Named e, o)
 
-terminateBlock :: MonadIRBuilder ret m => Named (Terminator ::: ret) -> m ()
-terminateBlock nt = do
-  blockName <- ensureBlock
-  blockInsts <- liftIRState $ gets (reverse . builderBlockInsts)
-  let block = basicBlock blockName blockInsts nt
-  liftIRState $ modify \s -> s
-    { builderBlocks = block : builderBlocks s
-    , builderBlockName = Nothing
-    , builderBlockInsts = []
-    }
+instance NameResult () VoidResult where
+  nameResult e = pure (Inst.do' e, ())
 
-inst :: (MonadIRBuilder ret m, FirstClassType t, Known t) => Instruction ::: t -> m (Operand ::: t)
-inst i = do
-  name <- fresh
-  appendInst $ Inst.name name i
-  pure $ localReference name
+instance (FirstClassType t, Known t) => NameResult (Operand ::: t) (Result t) where
+  nameResult e = do
+    n <- fresh
+    pure (Inst.name n e, localReference n)
 
-inst_ :: MonadIRBuilder ret m => Instruction ::: VoidType -> m ()
-inst_ i = appendInst $ Inst.do' i
+class Emitable ret e where
+  emit :: (MonadIRBuilder ret m, NameResult o r) => e :::? r -> m o
 
-term :: (MonadIRBuilder ret m, FirstClassType t, Known t) => Terminator ::: ret ::: t -> m (Operand ::: t)
-term t = do
-  name <- fresh
-  terminateBlock $ Inst.name name t
-  pure $ localReference name
+instance Emitable ret Instruction where
+  emit inst = do
+    (nInst, o) <- nameResult inst
+    ensureBlock
+    liftIRState $ modify \s -> s { builderBlockInsts = nInst : builderBlockInsts s }
+    pure o
 
-term_ :: MonadIRBuilder ret m => Terminator ::: ret ::: VoidType -> m ()
-term_ t = terminateBlock $ Inst.do' t
+instance ret ~ ret' => Emitable ret (Terminator :::? ret') where
+  emit term = do
+    (nTerm, o) <- nameResult term
+    blockName <- ensureBlock
+    blockInsts <- liftIRState $ gets (reverse . builderBlockInsts)
+    let block = basicBlock blockName blockInsts nTerm
+    liftIRState $ modify \s -> s
+      { builderBlocks = block : builderBlocks s
+      , builderBlockName = Nothing
+      , builderBlockInsts = []
+      }
+    pure o
 
 -- | Begin a new basic block.
 --
@@ -228,7 +225,7 @@ block = do
 
   when (isJust currBlock) do
     -- there is currently an active block, need to terminate it
-    term_ $ Inst.br newBlock []
+    emit $ Inst.br newBlock []
 
   liftIRState $ modify \s -> s { builderBlockName = Just newBlock }
   pure newBlock
@@ -264,7 +261,7 @@ param attrs = assertLLVMType (Nothing, attrs)
 defineFunction
   :: forall ret params m.
      (MonadModuleBuilder m,
-      ValidType (FunctionType ret params),
+      ValidFunctionType ret params,
       Known ret, AllSatisfy Known params)
   => Name ::: PointerType (AddrSpace 0) -- ^ function name
   -> ParameterInfo :::* params
@@ -282,7 +279,8 @@ defineFunction name paramInfo variadic info body = do
   where
     convertParamInfo
       :: forall (ps :: [Type]).
-         AllSatisfy Known ps
+         (AllSatisfy Known ps,
+          AllSatisfy FirstClassType ps)
       => ParameterInfo :::* ps
       -> IRBuilderT ret m (Parameter :::* ps, Operand :::* ps)
 
@@ -298,7 +296,7 @@ defineFunction name paramInfo variadic info body = do
 declareFunction
   :: forall ret params m.
      (MonadModuleBuilder m,
-      ValidType (FunctionType ret params),
+      ValidFunctionType ret params,
       Known ret, AllSatisfy Known params)
   => Name ::: PointerType (AddrSpace 0) -- ^ function name
   -> ParameterInfo :::* params -- ^ parameter name is ignored
@@ -320,7 +318,7 @@ global
   :: forall t as m.
      (MonadModuleBuilder m,
       FirstClassType t,
-      ValidType (PointerType as),
+      FirstClassType (PointerType as),
       Known t, Known as)
   => Name ::: PointerType as -- ^ variable name
   -> Maybe (Constant ::: t)  -- ^ initializer

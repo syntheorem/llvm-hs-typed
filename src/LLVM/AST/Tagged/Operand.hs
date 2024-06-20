@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-duplicate-exports #-}
+
 -- | This module provides a type-safe variant of "LLVM.AST.Operand".
 module LLVM.AST.Tagged.Operand
 ( Operand
@@ -17,7 +19,7 @@ import LLVM.AST.Operand hiding (Operand(..), CallableOperand)
 import LLVM.AST.Operand (Operand)
 import LLVM.AST.Operand qualified as NonTagged
 
-localReference :: forall t. Known t => Name ::: t -> Operand ::: t
+localReference :: forall t. (FirstClassType t, Known t) => Name ::: t -> Operand ::: t
 localReference nm = assertLLVMType (NonTagged.LocalReference (val @t) (unTyped nm))
 
 constantOperand :: Constant ::: t -> Operand ::: t

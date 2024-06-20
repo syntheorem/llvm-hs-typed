@@ -56,7 +56,7 @@ import LLVM.AST.TypeLevel
 globalVariable
   :: forall t as.
      (FirstClassType t,
-      ValidType (PointerType as),
+      FirstClassType (PointerType as),
       Known t, Known as)
   => Name ::: PointerType as -- ^ variable name
   -> Maybe (Constant ::: t)  -- ^ initializer
@@ -101,8 +101,8 @@ globalVariableDefaults = GlobalVariableInfo
 -- pointed to by that pointer. (Note: I'm not 100% clear if that's what the type is supposed to be)
 globalAlias
   :: forall (t :: Type) as.
-     (ValidType t,
-      ValidType (PointerType as),
+     (FirstClassType t,
+      FirstClassType (PointerType as),
       Known t, Known as)
   => Name ::: PointerType as     -- ^ alias name
   -> Constant ::: PointerType as -- ^ aliasee
@@ -137,11 +137,11 @@ globalAliasDefaults = GlobalAliasInfo
 -- support this, so the address space is hardcoded to 0.
 function
   :: forall ret params.
-     (ValidType (FunctionType ret params), Known ret)
+     (ValidFunctionType ret params, Known ret)
   => Name ::: PointerType (AddrSpace 0) -- ^ function name
   -> Parameter :::* params
   -> Bool -- ^ variadic
-  -> [BasicBlock ::: ret]
+  -> [BasicBlock :::? ret]
   -> FunctionInfo
   -> Global
 function nm params variadic bbs info
@@ -193,6 +193,6 @@ parameter nm attrs = coerce Parameter (val @t) nm attrs
 basicBlock
   :: Name ::: LabelType
   -> [Named Instruction]
-  -> Named (Terminator ::: t)
-  -> BasicBlock ::: t
+  -> Named (Terminator :::? t)
+  -> BasicBlock :::? t
 basicBlock nm instr term = assertLLVMType $ BasicBlock (coerce nm) instr (coerce term)

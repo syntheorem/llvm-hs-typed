@@ -78,11 +78,11 @@ class IsGEP_Index (vecSize :: Maybe Nat) opd (idx :: Maybe Nat) a | a -> idx whe
 instance Known i => IsGEP_Index vecSize opd (Just i) (Proxy i) where
   toGEP_Indices _ = GEP_KnownIndex
 
-instance (ValidType (IntegerType w), Known w) =>
+instance (FirstClassType (IntegerType w), Known w) =>
   IsGEP_Index Nothing opd Nothing (opd ::: IntegerType w) where
     toGEP_Indices = GEP_UnknownIndex
 
-instance (ValidType (VectorType n (IntegerType w)), Known w) =>
+instance (FirstClassType (VectorType n (IntegerType w)), Known w) =>
   IsGEP_Index (Just n) opd Nothing (opd ::: VectorType n (IntegerType w)) where
     toGEP_Indices = GEP_UnknownIndexVector
 

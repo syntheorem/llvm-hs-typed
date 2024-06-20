@@ -5,6 +5,8 @@
 module LLVM.AST.Tagged.Type
 ( FloatingPointType'(..)
 , Type(..)
+, FunctionType'(..)
+, Result'(..)
 
 -- * Type aliases
 , Void
@@ -27,7 +29,6 @@ module LLVM.AST.Tagged.Type
 , PPC_FP128
 
 -- * Constraints
-, ValidType
 , FirstClassType
 , SizedType
 , VectorElementType
@@ -38,6 +39,8 @@ module LLVM.AST.Tagged.Type
 , IntOrIntVector
 , FloatOrFloatVector
 , PtrOrPtrVector
+, ResultSatisfies
+, ValidFunctionType
 
 -- * Type-level functions
 , BitSizeOf
@@ -72,33 +75,29 @@ data FloatingPointType'
 -- LLVM are now opaque, recursive types are no longer possible, meaning that named types are no
 -- longer necessary.
 data Type
-  = VoidType
-  | IntegerType Nat -- ^ width in bits
+  = IntegerType Nat -- ^ width in bits
   | PointerType AddrSpace'
   | FloatingPointType FloatingPointType'
-
-  -- | we do not support varargs in the typed represenation
-  | FunctionType
-      Type   -- ^ return type
-      [Type] -- ^ parameter types
-
+  | MetadataType
+  | TokenType
+  | LabelType
   | VectorType
       Nat    -- ^ element count
       Type   -- ^ element type
-
   | StructureType
       Bool   -- ^ is packed
       [Type] -- ^ element types
-
   | ArrayType
       Nat    -- ^ element count
       Type   -- ^ element type
 
-  | MetadataType
-  | TokenType
-  | LabelType
+data Result'
+  = Result Type
+  | VoidResult
 
-type Void = VoidType
+data FunctionType' = FunctionType Result' [Type]
+
+type Void = VoidResult
 type Ptr  = PointerType (AddrSpace 0)
 
 type I1   = IntegerType 1
@@ -120,71 +119,57 @@ type MaxVectorLength = 0xFFFFFFFF -- vector length is stored in Word32
 type MaxArrayLength  = 0xFFFFFFFFFFFFFFFF -- array length is stored in Word64
 type MaxAddrSpace    = 0xFFFFFFFF -- address space is stored in Word32
 
--- | Constraint that ensures an LLVM type is well-formed.
-type family ValidType (t :: Type) :: Constraint where
-  ValidType VoidType                     = ()
-  ValidType (IntegerType w)              = (0 < w, w <= MaxIntegerWidth)
-  ValidType (PointerType (AddrSpace as)) = (as <= MaxAddrSpace)
-  ValidType (FloatingPointType _)        = ()
-  ValidType (FunctionType ret params)    = (ReturnType ret, AllSatisfy FirstClassType params)
-  ValidType (VectorType n t)             = (0 < n, n <= MaxVectorLength, VectorElementType t)
-  ValidType (StructureType _ ts)         = (AllSatisfy SizedType ts)
-  ValidType (ArrayType n t)              = (n < MaxArrayLength, SizedType t)
-  ValidType MetadataType                 = ()
-  ValidType TokenType                    = ()
-  ValidType LabelType                    = ()
-
 -- | Types that can be used in an LLVM register.
--- This includes all types except void and function types.
-class ValidType t => FirstClassType t
+-- This includes all valid LLVM types except void and function types.
+class FirstClassType (t :: Type)
 instance FirstClassType MetadataType
 instance FirstClassType TokenType
 instance FirstClassType LabelType
 instance FirstClassType (FloatingPointType fpt)
-instance ValidType (IntegerType w)      => FirstClassType (IntegerType w)
-instance ValidType (PointerType as)     => FirstClassType (PointerType as)
-instance ValidType (VectorType n t)     => FirstClassType (VectorType n t)
-instance ValidType (StructureType p ts) => FirstClassType (StructureType p ts)
-instance ValidType (ArrayType n t)      => FirstClassType (ArrayType n t)
+instance (0 < w, w <= MaxIntegerWidth)                      => FirstClassType (IntegerType w)
+instance (as <= MaxAddrSpace)                               => FirstClassType (PointerType (AddrSpace as))
+instance (0 < n, n <= MaxVectorLength, VectorElementType t) => FirstClassType (VectorType n t)
+instance (AllSatisfy SizedType ts)                          => FirstClassType (StructureType p ts)
+instance (n < MaxArrayLength, SizedType t)                  => FirstClassType (ArrayType n t)
 
--- | Types with a size that can be used in array or structure types.
+-- | Types with a size that can be used as elements of array or structure types.
 -- This includes all first-class types except metadata, label, and token.
-class FirstClassType t => SizedType t
+class ReturnType t => SizedType t
 instance SizedType (FloatingPointType fpt)
-instance ValidType (IntegerType w)      => SizedType (IntegerType w)
-instance ValidType (PointerType as)     => SizedType (PointerType as)
-instance ValidType (VectorType n t)     => SizedType (VectorType n t)
-instance ValidType (StructureType p ts) => SizedType (StructureType p ts)
-instance ValidType (ArrayType n t)      => SizedType (ArrayType n t)
+instance FirstClassType (IntegerType w)      => SizedType (IntegerType w)
+instance FirstClassType (PointerType as)     => SizedType (PointerType as)
+instance FirstClassType (VectorType n t)     => SizedType (VectorType n t)
+instance FirstClassType (StructureType p ts) => SizedType (StructureType p ts)
+instance FirstClassType (ArrayType n t)      => SizedType (ArrayType n t)
 
 -- | Types that can be used as an element of a vector type.
 -- This includes all floating point, integer, and pointer types.
 class SizedType t => VectorElementType t
 instance VectorElementType (FloatingPointType fpt)
-instance ValidType (IntegerType w)  => VectorElementType (IntegerType w)
-instance ValidType (PointerType as) => VectorElementType (PointerType as)
+instance FirstClassType (IntegerType w)  => VectorElementType (IntegerType w)
+instance FirstClassType (PointerType as) => VectorElementType (PointerType as)
 
 -- | Types that can be used as the return type of a function.
--- Includes void and all first-class types other than metadata and label.
-class ValidType t => ReturnType t
+-- Includes all first-class types other than metadata and label.
+class FirstClassType t => ReturnType t
 instance ReturnType TokenType -- only usable by intrinsics
 instance ReturnType (FloatingPointType fpt)
-instance ValidType (IntegerType w)      => ReturnType (IntegerType w)
-instance ValidType (PointerType as)     => ReturnType (PointerType as)
-instance ValidType (VectorType n t)     => ReturnType (VectorType n t)
-instance ValidType (StructureType p ts) => ReturnType (StructureType p ts)
-instance ValidType (ArrayType n t)      => ReturnType (ArrayType n t)
+instance FirstClassType (IntegerType w)      => ReturnType (IntegerType w)
+instance FirstClassType (PointerType as)     => ReturnType (PointerType as)
+instance FirstClassType (VectorType n t)     => ReturnType (VectorType n t)
+instance FirstClassType (StructureType p ts) => ReturnType (StructureType p ts)
+instance FirstClassType (ArrayType n t)      => ReturnType (ArrayType n t)
 
 -- | Types that can be used in an atomic operations.
 -- Includes pointer, integer, and floating point types with a power-of-two size.
 class SizedType t => AtomicType t
-instance ValidType (PointerType as) => AtomicType (PointerType as)
-instance (ValidType (IntegerType w), AtomicBitSize w) => AtomicType (IntegerType w)
+instance FirstClassType (PointerType as) => AtomicType (PointerType as)
+instance (FirstClassType (IntegerType w), AtomicBitSize w) => AtomicType (IntegerType w)
 instance AtomicBitSize (BitSizeOfFP fpt) => AtomicType (FloatingPointType fpt)
 
 -- | Ensures a given bit width is valid for atomic operations.
 --
--- LLVM requires atomic operations to use types whose bit width is a power of 2 that is at least 8.
+-- LLVM requires atomic operations to use types whose bit width is a power of 2 and at least 8.
 type family AtomicBitSize (s :: Nat) :: Constraint where
   AtomicBitSize 0 = TypeError (Text "zero is not a power of two")
   AtomicBitSize s = (8 <= s, s ~ (2 ^ Log2 s))
@@ -194,38 +179,46 @@ type family AtomicBitSize (s :: Nat) :: Constraint where
 -- The LLVM language reference says that any type can be used with @zeroinitialize@, but @llvm-hs@
 -- only allows it to be used with array, structure, and vector types.
 class SizedType t => ZeroInitializable t
-instance ValidType (VectorType n t)     => ZeroInitializable (VectorType n t)
-instance ValidType (StructureType p ts) => ZeroInitializable (StructureType p ts)
-instance ValidType (ArrayType n t)      => ZeroInitializable (ArrayType n t)
+instance FirstClassType (VectorType n t)     => ZeroInitializable (VectorType n t)
+instance FirstClassType (StructureType p ts) => ZeroInitializable (StructureType p ts)
+instance FirstClassType (ArrayType n t)      => ZeroInitializable (ArrayType n t)
 
 -- | Types that can be bitcasted.
 -- Includes all integer and floating point types, and vectors of those types.
 class SizedType t => BitCastable t
-instance ValidType (IntegerType w)                        => BitCastable (IntegerType w)
-instance ValidType (FloatingPointType fpt)                => BitCastable (FloatingPointType fpt)
-instance ValidType (VectorType n (IntegerType w))         => BitCastable (VectorType n (IntegerType w))
-instance ValidType (VectorType n (FloatingPointType fpt)) => BitCastable (VectorType n (FloatingPointType fpt))
+instance FirstClassType (IntegerType w)                        => BitCastable (IntegerType w)
+instance FirstClassType (FloatingPointType fpt)                => BitCastable (FloatingPointType fpt)
+instance FirstClassType (VectorType n (IntegerType w))         => BitCastable (VectorType n (IntegerType w))
+instance FirstClassType (VectorType n (FloatingPointType fpt)) => BitCastable (VectorType n (FloatingPointType fpt))
 
 -- | A type that is either 'IntegerType' or 'VectorType' with 'IntegerType' elements.
 class BitCastable t => IntOrIntVector (len :: Maybe Nat) (width :: Nat) (t :: Type) | t -> width len
-instance ValidType (IntegerType w) =>
+instance FirstClassType (IntegerType w) =>
   IntOrIntVector Nothing w (IntegerType w)
-instance ValidType (VectorType n (IntegerType w)) =>
+instance FirstClassType (VectorType n (IntegerType w)) =>
   IntOrIntVector (Just n) w (VectorType n (IntegerType w))
 
 -- | A type that is either 'FloatingPointType' or 'VectorType' with 'FloatingPointType' elements.
 class BitCastable t => FloatOrFloatVector (len :: Maybe Nat) (fpt :: FloatingPointType') (t :: Type) | t -> fpt len
-instance ValidType (FloatingPointType fpt) =>
+instance FirstClassType (FloatingPointType fpt) =>
   FloatOrFloatVector Nothing fpt (FloatingPointType fpt)
-instance ValidType (VectorType n (FloatingPointType fpt)) =>
+instance FirstClassType (VectorType n (FloatingPointType fpt)) =>
   FloatOrFloatVector (Just n) fpt (VectorType n (FloatingPointType fpt))
 
 -- | A type that is either 'PointerType' or 'VectorType' with 'PointerType' elements.
 class SizedType t => PtrOrPtrVector (len :: Maybe Nat) (as :: AddrSpace') (t :: Type) | t -> as len
-instance ValidType (PointerType as) =>
+instance FirstClassType (PointerType as) =>
   PtrOrPtrVector Nothing as (PointerType as)
-instance ValidType (VectorType n (PointerType as)) =>
+instance FirstClassType (VectorType n (PointerType as)) =>
   PtrOrPtrVector (Just n) as (VectorType n (PointerType as))
+
+-- | Ensure that a result is either void or satisfies the given constraint.
+type family ResultSatisfies (c :: Type -> Constraint) (r :: Result') :: Constraint where
+  ResultSatisfies c (Result t) = c t
+  ResultSatisfies _ VoidResult = ()
+
+-- | Helper type alias to validate function result and argument types.
+type ValidFunctionType ret args = (ResultSatisfies ReturnType ret, AllSatisfy FirstClassType args)
 
 -- | Size in bits of a Bitcastable type.
 type family BitSizeOf (t :: Type) :: Nat where
@@ -272,16 +265,12 @@ instance Known X86_FP80FP  where knownVal = NonTagged.X86_FP80FP
 instance Known PPC_FP128FP where knownVal = NonTagged.PPC_FP128FP
 
 type instance Value Type = NonTagged.Type
-instance Known VoidType where
-  knownVal = NonTagged.VoidType
 instance Known n => Known (IntegerType n) where
   knownVal = NonTagged.IntegerType (word32Val @n)
 instance Known as => Known (PointerType as) where
   knownVal = NonTagged.PointerType (val @as)
 instance Known fpf => Known (FloatingPointType fpf) where
   knownVal = NonTagged.FloatingPointType (val @fpf)
-instance (Known ret, Known args) => Known (FunctionType ret args) where
-  knownVal = NonTagged.FunctionType (val @ret) (val @args) False
 instance (Known n, Known t) => Known (VectorType n t) where
   knownVal = NonTagged.VectorType (word32Val @n) (val @t)
 instance (Known packed, Known elts) => Known (StructureType packed elts) where
@@ -294,3 +283,11 @@ instance Known TokenType where
   knownVal = NonTagged.TokenType
 instance Known LabelType where
   knownVal = NonTagged.LabelType
+
+type instance Value Result' = NonTagged.Type
+instance Known VoidResult where knownVal = NonTagged.VoidType
+instance Known t => Known (Result t) where knownVal = val @t
+
+type instance Value FunctionType' = NonTagged.Type
+instance (Known ret, Known args) => Known (FunctionType ret args) where
+  knownVal = NonTagged.FunctionType (val @ret) (val @args) False
